@@ -1,0 +1,17 @@
+{
+  "name": "construct",
+  "version": "0.1.0",
+  "description": "Autonomous construction escrow agent — ETHGlobal Open Agents 2026",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:hello": "hardhat run scripts/deploy-hello.cjs --network zgGalileo",
+    "interact:hello": "hardhat run scripts/interact-hello.cjs --network zgGalileo"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.1.3",
+    "dotenv": "^16.4.0",
+    "ethers": "6.13.1",
+    "hardhat": "^2.22.0"
+  }
+}
