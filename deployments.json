@@ -1,0 +1,11 @@
+{
+  "zgGalileo": {
+    "HelloZeroG": {
+      "address": "0x94C41246985AE15846b525bEd4171EED0909679e",
+      "deployer": "0xdf6cA46F65159658Ac52736CeBD806C16095B078",
+      "txHash": "0x83701e1847aaa52184ec5e0ebaa0ae797bb9b7b24203e4f528a802caf726c0ae",
+      "initialMessage": "Hello, 0G — Construct is live.",
+      "deployedAt": "2026-04-24T21:32:08.530Z"
+    }
+  }
+}
