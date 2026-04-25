@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { config } from "./config.mjs";
 import routes from "./routes/index.mjs";
+import "reflect-metadata";
 
 const app = express();
 

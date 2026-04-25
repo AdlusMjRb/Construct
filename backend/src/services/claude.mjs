@@ -1,3 +1,7 @@
+/**
+ * Everything from milestone generation and translation to evidance checking
+ */
+
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config.mjs";
 

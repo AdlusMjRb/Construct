@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { verifyEvidence } from "../services/claude.mjs";
+import { runProvenanceChecks } from "../services/provenance.mjs";
 import { config } from "../config.mjs";
 
 const router = Router();
@@ -44,13 +45,22 @@ router.post("/verify", upload.array("images", 5), async (req, res) => {
       throw new Error("milestone must include name and acceptance_criteria[]");
     }
 
-    const images = (req.files ?? []).map((f) => ({
+    const files = req.files ?? [];
+
+    const provenanceResults = await Promise.all(
+      files.map((f) =>
+        runProvenanceChecks(f.buffer, f.mimetype, f.originalname).then((r) => ({
+          ...r,
+          filename: f.originalname,
+        })),
+      ),
+    );
+
+    const images = files.map((f) => ({
       base64: f.buffer.toString("base64"),
       mediaType: f.mimetype,
       filename: f.originalname,
     }));
-
-    const provenanceResults = [];
 
     const result = await verifyEvidence(
       milestone,
@@ -62,6 +72,7 @@ router.post("/verify", upload.array("images", 5), async (req, res) => {
     res.json({
       ok: true,
       result,
+      provenance: provenanceResults,
       meta: {
         imagesReceived: images.length,
         contractAddress: req.body.contractAddress ?? null,
