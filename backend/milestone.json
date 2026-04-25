@@ -1,0 +1,16 @@
+{
+  "name": "Site Preparation and Clearing",
+  "verification_confidence": "high",
+  "acceptance_criteria": [
+    {
+      "description": "Site area of 2.5m x 2m is completely cleared of vegetation, rocks, and debris",
+      "evidence_type": "photo",
+      "evidence_instruction": "Take 4 photos: one wide-angle shot from each corner of the cleared area showing the full 2.5m x 2m space. Place a visible marker (stake or spray paint) at each corner. Include one photo with a person standing at one edge for scale reference."
+    },
+    {
+      "description": "Ground surface is level and compacted, ready for concrete preparation",
+      "evidence_type": "photo",
+      "evidence_instruction": "Photo of spirit level placed across the cleared area from multiple directions (north-south and east-west) showing level ground. Take close-up photo of level bubble centered."
+    }
+  ]
+}

@@ -8,4 +8,5 @@ export const config = {
     name: "0G Galileo Testnet",
   },
   privateKey: process.env.DEPLOYER_PRIVATE_KEY || null,
+  anthropicKey: process.env.ANTHROPIC_API_KEY || null,
 };
