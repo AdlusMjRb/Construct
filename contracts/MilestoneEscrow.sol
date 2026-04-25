@@ -110,10 +110,11 @@ contract MilestoneEscrow {
             allocated += share;
         }
 
-        uint256 overpayment = msg.value - required;
-        if (overpayment > 0) {
-            (bool refunded, ) = payable(msg.sender).call{value: overpayment}("");
-        }
+uint256 overpayment = msg.value - required;
+if (overpayment > 0) {
+    (bool refunded, ) = payable(msg.sender).call{value: overpayment}("");
+    require(refunded, "Overpayment refund failed");
+}
 
         emit Funded(msg.sender, budget, reserveAmount, primeAmount);
     }
