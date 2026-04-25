@@ -6,6 +6,26 @@
       "txHash": "0x83701e1847aaa52184ec5e0ebaa0ae797bb9b7b24203e4f528a802caf726c0ae",
       "initialMessage": "Hello, 0G — Construct is live.",
       "deployedAt": "2026-04-24T21:32:08.530Z"
+    },
+    "MilestoneEscrow": {
+      "address": "0x5492A39a3Fc756Dd1083aE995c3fD56576d60F02",
+      "deployer": "0xdf6cA46F65159658Ac52736CeBD806C16095B078",
+      "payee": "0xdf6cA46F65159658Ac52736CeBD806C16095B078",
+      "agent": "0xdf6cA46F65159658Ac52736CeBD806C16095B078",
+      "storageHash": "pending-storage-integration",
+      "budget": "10000000000000000",
+      "milestones": [
+        "Foundation poured",
+        "Walls and roof complete",
+        "Solar panels and rainwater harvesting installed"
+      ],
+      "percentages": [
+        30,
+        40,
+        30
+      ],
+      "txHash": "0xc236e67304847e07c2f7b57bb699bfa53d2373649e4d2602e643d90fc017aae7",
+      "deployedAt": "2026-04-25T07:48:51.407Z"
     }
   }
 }

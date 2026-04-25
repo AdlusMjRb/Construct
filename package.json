@@ -6,7 +6,8 @@
   "scripts": {
     "compile": "hardhat compile",
     "deploy:hello": "hardhat run scripts/deploy-hello.cjs --network zgGalileo",
-    "interact:hello": "hardhat run scripts/interact-hello.cjs --network zgGalileo"
+    "interact:hello": "hardhat run scripts/interact-hello.cjs --network zgGalileo",
+    "deploy:escrow": "hardhat run scripts/deploy-escrow.cjs --network zgGalileo"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.1.2",
