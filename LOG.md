@@ -1,4 +1,4 @@
-===================== LOG: 24TH 22:33 Got helloworld working on 0G seems to be on problem. I'll call it next and check.
+===================== LOG: 24TH 22:33 Got helloworld working on 0G seems to be on problem. I'll call it next and check. =====================
 
 ────────────────────────────────────────────────────────────
 Deploying HelloZeroG to zgGalileo
@@ -12,7 +12,7 @@ Deploying… tx: 0x83701e1847aaa52184ec5e0ebaa0ae797bb9b7b24203e4f528a802caf726c
 ✓ ChainScan: https://chainscan-galileo.0g.ai/address/0x94C41246985AE15846b525bEd4171EED0909679e
 ✓ Tx ChainScan: https://chainscan-galileo.0g.ai/tx/0x83701e1847aaa52184ec5e0ebaa0ae797bb9b7b24203e4f528a802caf726c0ae
 
-===================== LOG: 24TH 22:40 HelloWorld interact works fine. I'm going to move onto construct milestone escrow next.
+===================== LOG: 24TH 22:40 HelloWorld interact works fine. I'm going to move onto construct milestone escrow next. =====================
 
 ────────────────────────────────────────────────────────────
 Interacting with HelloZeroG on zgGalileo
@@ -33,7 +33,7 @@ New on-chain message: "Updated at 2026-04-24T21:40:05.750Z"
 
 ChainScan tx: https://chainscan-galileo.0g.ai/tx/0x3053f7fcd933acd5c0951cd58607f0e45efcf2295dde8fd2564c9d499c591f3b
 
-===================== LOG: 25TH 08:38 test running fine for MilestoneEscrow.
+===================== LOG: 25TH 08:38 test running fine for MilestoneEscrow. =====================
 
 MilestoneEscrow
 deployment & constructor validation
@@ -78,7 +78,7 @@ edge cases
 
 34 passing (2s)
 
-===================== LOG: 25th 08:50 deploy-escrow is running. I've got it deplying and refunding extra gas.
+===================== LOG: 25th 08:50 deploy-escrow is running. I've got it deplying and refunding extra gas. =====================
 
 ────────────────────────────────────────────────────────────
 Deploying MilestoneEscrow to zgGalileo
@@ -105,7 +105,7 @@ Required funding: 0.0105 OG
 ✓ Saved to deployments.json
 alexander@Alexanders-MacBook-Pro-2 Construct %
 
-===================== ERROR 25th 08:54 BUG in the complete milestone
+===================== ERROR 25th 08:54 BUG in the complete milestone =====================
 
 ────────────────────────────────────────────────────────────
 Interacting with MilestoneEscrow on zgGalileo
@@ -190,7 +190,7 @@ Caller: 0xdf6cA46F65159658Ac52736CeBD806C16095B078
    shortMessage: 'transaction execution reverted'
    }
 
-===================== testing seems to work, but broadcast tx died
+===================== testing seems to work, but broadcast tx died =====================
 
 Welcome to Node.js v25.8.1.
 Type ".help" for more information.
@@ -214,7 +214,7 @@ Type ".help" for more information.
 > m.completed
 > false
 
-===================== FIXED
+===================== FIXED =====================
 
 ────────────────────────────────────────────────────────────
 Interacting with MilestoneEscrow on zgGalileo
@@ -260,3 +260,75 @@ Caught a Galileo gas estimation quirk: ethers' estimator under-shoots
 completeMilestone, real tx reverts with status 0 and no reason. Fixed
 by setting explicit gasLimit in the script. Filed mentally as a known
 quirk to handle in the frontend later.
+
+===================== LOG 25th 09:42 server up and running =====================
+
+alexander@Alexanders-MacBook-Pro-2 backend % curl -s http://localhost:3001/api/health | python3 -m json.tool
+{
+"ok": true,
+"service": "construct-backend",
+"network": {
+"name": "0G Galileo Testnet",
+"chainId": 16602,
+"rpcUrl": "https://evmrpc-testnet.0g.ai"
+},
+"timestamp": "2026-04-25T08:41:34.076Z"
+}
+
+===================== LOG 25th 09:50 Backend skeleton built =====================
+
+Express on port 3001, ESM modules, two
+endpoints live:
+
+- GET /api/health — smoke test
+- GET /api/escrow/:address — reads on-chain MilestoneEscrow state
+
+The bridge moment: backend reading the contract I deployed this
+morning. Two days of work now connected as one system. ABI loaded
+from hardhat artifacts so there's no version drift risk.
+
+===================== LOG 25 13:13 Finally got Claude and trust stack up and running. =====================
+
+{"ok":true,"result":{"verdict":"ESCALATE","confidence":0.05,"reasoning":"The submitted evidence fails verification on multiple critical grounds:\n\n**PROVENANCE FAILURE — CRITICAL:**\nReality Defender has flagged this image as 94% likely to be AI-generated. This is an extremely high confidence score indicating the image is almost certainly synthetic. The image shows a generic icon/illustration of three people, not a photograph of a construction site. This is not legitimate evidence of site work.\n\n**EVIDENCE TYPE MISMATCH:**\n- Criterion 1 requires: 4 photos from each corner showing the cleared 2.5m x 2m area, with corner markers and a person for scale\n- Criterion 2 requires: Photos of a spirit level placed across the ground showing level readings\n- What was submitted: A single generic icon/illustration showing three stylized human figures\n\n**SEMANTIC FAILURE:**\nThe submitted image bears no relationship whatsoever to site preparation work. It shows no cleared ground, no construction site, no measurements, no equipment, and no physical location. It appears to be a stock icon or AI-generated placeholder image.\n\n**COMPLETENESS:**\nZero acceptance criteria have been met. The builder has submitted what appears to be a placeholder or test image rather than actual site documentation.\n\nThis is either a serious submission error or an attempt to claim payment without performing the work. Given the AI-generation flag and complete absence of relevant content, this must be escalated for human review and potential builder contact to request legitimate evidence.","provenance_assessment":"CRITICAL FAILURE: Reality Defender AI detection scored this image at 94% probability of being AI-generated. The image is a simple icon/illustration, not a photograph. EXIF data is marked as suspicious (likely absent or manipulated). C2PA content credentials are unavailable. All provenance signals point to this being synthetic or stock imagery, not authentic site documentation captured on-site. This represents the strongest possible negative provenance signal.","pricing_assessment":"N/A — no receipt evidence submitted","criteria_check":[{"criterion":"Site area of 2.5m x 2m is completely cleared of vegetation, rocks, and debris","met":false,"evidence_type_expected":"photo","evidence_type_received":"AI-generated icon/illustration","note":"Required 4 corner photos with markers and scale reference. Received a generic icon of three people. Image shows no construction site, no cleared area, no measurements. Reality Defender flagged as 94% AI-generated. Complete mismatch."},{"criterion":"Ground surface is level and compacted, ready for concrete preparation","met":false,"evidence_type_expected":"photo","evidence_type_received":"AI-generated icon/illustration","note":"Required photos of spirit level on ground from multiple directions. Received a generic icon showing three stylized human figures. No ground surface visible, no level tool, no construction site. Reality Defender flagged as 94% AI-generated. Complete mismatch."}]},"provenance":[{"trust_level":"untrusted","trust_summary":"Reality Defender flagged this image as likely AI-generated (94% probability). Evidence should be treated with extreme caution.","elapsed_ms":19628,"checks":{"exif":{"layer":"exif","status":"suspicious","camera":null,"gps":null,"timestamp":null,"software":null,"signals":["No camera make/model — suspicious for a photo","Minimal EXIF — no camera, no timestamp. Possible screenshot or AI-generated."],"raw":{"20752":{"0":1},"20753":0,"20754":0}},"c2pa":{"layer":"c2pa","status":"unavailable","signer":null,"claimGenerator":null,"assertions":[],"signals":["C2PA library not installed — provenance verification skipped"]},"reality_defender":{"layer":"reality_defender","status":"ai_generated","score":0.94,"signals":["⚠️ Reality Defender: 94% AI probability — likely AI-generated"]}},"filename":"test-evidence.jpg"}],"meta":{"imagesReceived":1,"contractAddress":null,"milestoneId":null}}%
+
+===================== LOG 26th 21:28 Backend tested completed =====================
+
+alexander@Alexanders-MacBook-Pro-2 backend % npm run test:integration
+
+> construct-backend@0.1.0 test:integration
+> node ../test/integration-backend.mjs
+
+Construct Backend — Integration Test
+API: http://localhost:3001
+
+[1] Health check
+✓ Server up — 0G Galileo Testnet (chain 16602)
+
+[2] Generate milestones + upload spec to 0G Storage
+✓ 4 milestones generated (42.3s)
+Title: "Small Garden Shed (2.5m x 2m)"
+✓ Storage upload: 0x7e6bd014b2270f002646e624d97473ea0ec5975441c0a56effa7da5f0f74ba38
+6343 bytes, 15968ms, 1 attempt(s)
+
+[3] Deploy MilestoneEscrow on 0G Galileo
+✓ Deployed at 0xC2B0c4D1b2D537313001550576F1cB5d43BFd52e (10.3s)
+Funded 0.0105 OG (budget + 5% agent fee)
+Tx: 0xa2d0a02a2e8e67740cbde1d4baa126d7f12273a0e08634d78030c914846d3d11
+
+[4] Read escrow state — confirm storage hash anchored on-chain
+✓ Storage hash matches contract state
+✓ funded=true, milestones=4, balance=0.01025 OG
+
+[5] Verify evidence (SKIPPED)
+⚠ No fixture image at /Users/alexander/Desktop/MAIN DOCS - PAXMATA/Hack 2026/Construct/test/fixtures/test-evidence.jpg
+Drop a test image there to enable this step
+
+[6] Complete milestone 0 — release payment
+✓ Milestone 0 completed (10.1s)
+Released 0.0015 OG to payee
+Tx: 0x48f0735a18b4a2e0b46bc282ba7952bd52e85f75c1d0af47b36bcff532a7c653
+
+✓ All checks passed (63.4s total)
+
+Contract: https://chainscan-galileo.0g.ai/address/0xC2B0c4D1b2D537313001550576F1cB5d43BFd52e
+Storage: 0x7e6bd014b2270f002646e624d97473ea0ec5975441c0a56effa7da5f0f74ba38
