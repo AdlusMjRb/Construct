@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { ethers } from "ethers";
+import { config } from "../config.mjs";
 import {
   readEscrowState,
   deployEscrow,
   fundEscrow,
   completeMilestoneOnChain,
-} from "../services/blockchain.mjs";
-import { uploadSpec } from "../services/storage.mjs";
-import { config } from "../config.mjs";
+} from "../keeperhub/blockchain.mjs";
+import { uploadSpec } from "../storage/storage.mjs";
 
 const router = Router();
 

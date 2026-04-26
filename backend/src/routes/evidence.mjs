@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
-import { verifyEvidence } from "../services/claude.mjs";
-import { runProvenanceChecks } from "../services/provenance.mjs";
+import { verifyEvidence } from "../agent/claude.mjs";
+import { runProvenanceChecks } from "../trust-stack/provenance.mjs";
 import { config } from "../config.mjs";
 
 const router = Router();

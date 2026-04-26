@@ -1,10 +1,3 @@
-/**
- * This is my provenance trust stack cncisting of three layers authenticity checks that run BEFORE Claude Vision:
- *   1. EXIF metadata — does this look like a real camera photo?
- *   2. C2PA manifest — was it cryptographically signed at capture?
- *   3. Reality Defender — AI-generation probability score
- */
-
 import exifr from "exifr";
 
 function dmsToDecimal(dms, ref) {

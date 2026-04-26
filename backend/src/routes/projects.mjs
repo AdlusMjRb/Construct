@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { ethers } from "ethers";
-import { generateMilestones } from "../services/claude.mjs";
-import { uploadSpec } from "../services/storage.mjs";
+import { generateMilestones } from "../agent/claude.mjs";
+import { uploadSpec } from "../storage/storage.mjs";
 import { config } from "../config.mjs";
 
 const router = Router();
