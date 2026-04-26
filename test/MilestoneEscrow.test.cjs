@@ -4,10 +4,9 @@ const { ethers } = require("hardhat");
 describe("MilestoneEscrow", function () {
   let owner, agent, payee, funder, attacker;
   const STORAGE_HASH = "0g://test-storage-hash";
-  const BUDGET = ethers.parseEther("1.0"); // 1 OG
-  const AGENT_FEE_BPS = 500n; // 5%
+  const BUDGET = ethers.parseEther("1.0");
+  const AGENT_FEE_BPS = 500n;
 
-  // helper: required funding = budget + 5% agent fee
   const requiredFunding = (budget) =>
     budget + (budget * AGENT_FEE_BPS) / 10000n;
 
@@ -15,7 +14,6 @@ describe("MilestoneEscrow", function () {
     [owner, agent, payee, funder, attacker] = await ethers.getSigners();
   });
 
-  // ─── helper to deploy a standard 2-milestone escrow ───
   async function deployStandard() {
     const Escrow = await ethers.getContractFactory("MilestoneEscrow");
     return Escrow.deploy(
@@ -28,7 +26,6 @@ describe("MilestoneEscrow", function () {
     );
   }
 
-  // ════════════════════════════════════════════════════════
   describe("deployment & constructor validation", function () {
     it("deploys with valid parameters and sets all state", async function () {
       const escrow = await deployStandard();
@@ -133,7 +130,6 @@ describe("MilestoneEscrow", function () {
     });
   });
 
-  // ════════════════════════════════════════════════════════
   describe("funding", function () {
     it("accepts funding via fund() and marks the escrow funded", async function () {
       const escrow = await deployStandard();
@@ -212,7 +208,6 @@ describe("MilestoneEscrow", function () {
       const gasCost = receipt.gasUsed * receipt.gasPrice;
       const balanceAfter = await ethers.provider.getBalance(funder.address);
 
-      // Funder should be down: required + gas, but NOT the overpayment
       const expectedSpend = required + gasCost;
       expect(balanceBefore - balanceAfter).to.equal(expectedSpend);
     });
@@ -245,7 +240,6 @@ describe("MilestoneEscrow", function () {
     });
   });
 
-  // ════════════════════════════════════════════════════════
   describe("completeMilestone", function () {
     let escrow;
     const required = requiredFunding(BUDGET);
@@ -329,7 +323,6 @@ describe("MilestoneEscrow", function () {
       );
 
       const tx = await escrow.connect(agent).completeMilestone(1);
-      // ↑ called by agent so owner only receives, doesn't pay gas
       await tx.wait();
 
       const ownerBalanceAfter = await ethers.provider.getBalance(owner.address);
@@ -354,10 +347,8 @@ describe("MilestoneEscrow", function () {
     });
   });
 
-  // ════════════════════════════════════════════════════════
   describe("agent gas refund", function () {
     it("refunds the agent for gas used on a non-final milestone", async function () {
-      // Use a 3-milestone escrow so milestone 0 is not the final one
       const Escrow = await ethers.getContractFactory("MilestoneEscrow");
       const escrow = await Escrow.deploy(
         ["A", "B", "C"],
@@ -380,14 +371,10 @@ describe("MilestoneEscrow", function () {
     });
 
     it("does NOT refund the agent on the final milestone (reserve already returned to owner)", async function () {
-      // Documents a known quirk: if the agent calls the LAST completeMilestone,
-      // the reserve has already been zeroed out and returned to the owner before
-      // the gas-refund check runs. The agent eats their own gas for the final tx.
       const escrow = await deployStandard();
       await escrow.connect(funder).fund({ value: requiredFunding(BUDGET) });
       await escrow.connect(owner).completeMilestone(0);
 
-      // Final milestone called by agent
       await expect(escrow.connect(agent).completeMilestone(1)).to.not.emit(
         escrow,
         "AgentGasRefund",
@@ -395,7 +382,6 @@ describe("MilestoneEscrow", function () {
     });
   });
 
-  // ════════════════════════════════════════════════════════
   describe("edge cases", function () {
     it("works with a single milestone at 100%", async function () {
       const Escrow = await ethers.getContractFactory("MilestoneEscrow");
@@ -418,7 +404,6 @@ describe("MilestoneEscrow", function () {
     });
 
     it("handles rounding by giving the remainder to the last milestone", async function () {
-      // 33 / 33 / 34 doesn't divide evenly by percentage; last one absorbs the remainder
       const Escrow = await ethers.getContractFactory("MilestoneEscrow");
       const escrow = await Escrow.deploy(
         ["A", "B", "C"],
@@ -435,7 +420,7 @@ describe("MilestoneEscrow", function () {
       const m2 = await escrow.getMilestone(2);
 
       const sum = m0.amount + m1.amount + m2.amount;
-      expect(sum).to.equal(BUDGET); // every wei accounted for
+      expect(sum).to.equal(BUDGET);
     });
 
     it("handles many milestones (10 at 10% each)", async function () {
@@ -452,7 +437,6 @@ describe("MilestoneEscrow", function () {
       );
       await escrow.connect(funder).fund({ value: requiredFunding(BUDGET) });
 
-      // Complete all 10
       for (let i = 0; i < 10; i++) {
         await escrow.connect(owner).completeMilestone(i);
       }

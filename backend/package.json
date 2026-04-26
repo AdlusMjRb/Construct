@@ -6,9 +6,11 @@
   "private": true,
   "scripts": {
     "start": "node src/server.mjs",
-    "dev": "node --watch src/server.mjs"
+    "dev": "node --watch src/server.mjs",
+    "test:integration": "node ../test/integration-backend.mjs"
   },
   "dependencies": {
+    "@0gfoundation/0g-ts-sdk": "^1.2.1",
     "@anthropic-ai/sdk": "^0.91.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",

@@ -1,4 +1,6 @@
+// backend/src/config.mjs
 import "dotenv/config";
+import { tmpdir } from "os";
 
 export const config = {
   port: parseInt(process.env.PORT || "3001", 10),
@@ -9,4 +11,10 @@ export const config = {
   },
   privateKey: process.env.DEPLOYER_PRIVATE_KEY || null,
   anthropicKey: process.env.ANTHROPIC_API_KEY || null,
+  storage: {
+    indexerRpc:
+      process.env.ZG_STORAGE_INDEXER_RPC ||
+      "https://indexer-storage-testnet-turbo.0g.ai",
+    tempDir: tmpdir(),
+  },
 };

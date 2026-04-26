@@ -185,6 +185,12 @@ function validateDeployInput(input) {
   if (typeof storageHash !== "string" || storageHash.length === 0) {
     throw new Error("storageHash must be a non-empty string");
   }
+  if (!storageHash.startsWith("0x") || storageHash.length < 10) {
+    console.warn(
+      `   ⚠️  storageHash "${storageHash}" doesn't look like a 0G Storage root — ` +
+        `expected a 0x-prefixed hex hash from /api/projects/generate`,
+    );
+  }
   if (budget === undefined || budget === null || Number(budget) <= 0) {
     throw new Error("budget must be a positive number (in OG)");
   }
