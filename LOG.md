@@ -1,4 +1,4 @@
-===================== LOG: 24TH 22:33 Got helloworld working on 0G seems to be on problem. I'll call it next and check. =====================
+===================== LOG: 24TH 22:33 Got helloworld working on 0G seems to be on problem. I'll call it next and check. =====================git add
 
 ────────────────────────────────────────────────────────────
 Deploying HelloZeroG to zgGalileo
@@ -332,3 +332,87 @@ Tx: 0x48f0735a18b4a2e0b46bc282ba7952bd52e85f75c1d0af47b36bcff532a7c653
 
 Contract: https://chainscan-galileo.0g.ai/address/0xC2B0c4D1b2D537313001550576F1cB5d43BFd52e
 Storage: 0x7e6bd014b2270f002646e624d97473ea0ec5975441c0a56effa7da5f0f74ba38
+
+===================== LOG 26th 22:46 Backend refactor completed and tested, all green =====================
+
+> node --test --test-reporter=spec '../test/integration/\*.test.mjs'
+
+▶ escrow lifecycle
+✔ generate spec for the deploy step (48419.563122ms)
+✔ POST /api/escrow/prepare — returns contract artifact + hash (19613.150008ms)
+✔ POST /api/escrow/deploy — deploys with real storage hash (14097.479343ms)
+✔ GET /api/escrow/:address — reads back state with anchored hash (536.748971ms)
+✔ POST /api/escrow/:address/complete/0 — releases payment (10124.030272ms)
+✔ POST /api/escrow/deploy — rejects invalid payee (6.409809ms)
+✔ escrow lifecycle (93005.308305ms)
+ℹ Generates a real spec and uploads to 0G — ~15-25s
+ℹ Uploads spec to 0G again for prepare path — ~15s
+ℹ Deploys + funds in one tx on 0G Galileo — ~10-30s
+ℹ Completes milestone 0 on 0G — ~10-30s
+✔ POST /api/evidence/verify — runs Claude Vision + trust stack (33092.031428ms)
+ℹ Calls Claude Vision + Reality Defender — ~20-30s
+✔ POST /api/evidence/verify — rejects missing milestone field (10.841467ms)
+✔ GET /api/health — returns ok with network info (199.585192ms)
+✔ POST /api/projects/generate — generates spec and uploads to 0G Storage (48894.591496ms)
+ℹ Calls Claude + uploads to 0G — this takes 15-25s
+✔ POST /api/projects/generate — rejects empty description (10.274253ms)
+✔ POST /api/translate — translates spec to French, preserves structure (5928.293453ms)
+ℹ Calls Claude for translation — ~5-10s
+✔ POST /api/translate-verification — translates verdict prose, preserves verdict (2847.272701ms)
+ℹ Calls Claude for translation — ~5-10s
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 93348.671212
+
+===================== LOG 27th 08:20 Frontend scaffold up and running =====================
+
+Vite + React + TS scaffolded under frontend/ as sibling to backend/.
+wagmi v2, viem v2, RainbowKit v2, react-query v5 installed. ethers
+pinned at 6.13.1. .npmrc legacy-peer-deps=true. Tailwind v3 (matching
+dress rehearsal).
+
+Vite proxy /api → http://localhost:3001 working. 0G Galileo defined as
+custom viem chain (16602) and registered with RainbowKit.
+
+Smoke test green:
+
+- ConnectButton renders, Rabby connects on Galileo with 0.2 OG showing
+- /api/health rendered inline:
+  { ok: true, service: "construct-backend",
+  network: { name: "0G Galileo Testnet", chainId: 16602 } }
+
+===================== LOG 27th 15:23 Frontend port complete, full e2e working =====================
+
+End-to-end lifecycle proven on 0G Galileo with the
+new organised frontend:
+
+Generate → Lock → Deploy → Fund → Verify → Release
+
+Test: 0.05 OG escrow, single milestone "show notepad with word DONE"
+
+- Claude generated criteria (screenshot evidence, word visible)
+- Wallet deployed contract on Galileo
+- Submitted screenshot of macOS Notes "DONE"
+- Trust Stack: LOW (screenshot has no camera EXIF, no C2PA, RD errored)
+- Claude reasoned: "screenshots naturally lack camera metadata,
+  suspicious flag is false positive in this context"
+- Verdict: APPROVE 85% confidence
+- 0.0500 OG released to payee
+
+Errors hit and fixed during port:
+
+- Vite proxy timeout: 30s default killed long Claude+0G calls.
+  Bumped to 600s.
+- apiGenerateMilestones response shape: milestones live under
+  `data.spec.milestones`, not flat
+- Multer field name: backend wants "images" not "files"
+- Backend wanted milestone JSON-stringified, not separate
+  acceptance_criteria + verification_confidence fields
+- Image >5MB hit Anthropic Vision limit. Added sharp resize
+  on backend to 2048x2048 / quality 85 if over 3.5MB raw
+- Logo SVG was white-on-white. Sat it on a teal pill plate.

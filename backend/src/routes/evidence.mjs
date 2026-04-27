@@ -56,11 +56,27 @@ router.post("/verify", upload.array("images", 5), async (req, res) => {
       ),
     );
 
-    const images = files.map((f) => ({
-      base64: f.buffer.toString("base64"),
-      mediaType: f.mimetype,
-      filename: f.originalname,
-    }));
+    const sharp = (await import("sharp")).default;
+    const MAX_RAW_BYTES = 3_500_000;
+
+    const images = await Promise.all(
+      files.map(async (f) => {
+        let buffer = f.buffer;
+        let mediaType = f.mimetype;
+        if (buffer.length > MAX_RAW_BYTES) {
+          buffer = await sharp(f.buffer)
+            .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
+            .jpeg({ quality: 85 })
+            .toBuffer();
+          mediaType = "image/jpeg";
+        }
+        return {
+          base64: buffer.toString("base64"),
+          mediaType,
+          filename: f.originalname,
+        };
+      }),
+    );
 
     const result = await verifyEvidence(
       milestone,
