@@ -87,12 +87,12 @@ export const Shutter2Review = ({
             marginBottom: "10px",
           }}
         >
-          02 — Review & Deploy
+          Step Two
         </div>
         <p style={{ fontSize: "14px", color: P.textMid, margin: 0 }}>
           {frozen
             ? "Milestones have been deployed to 0G Chain."
-            : "Edit milestones, lock each one, then deploy."}
+            : "Edit your milestones, then Lock and Deploy your project on-chain. Don't forget to sign the transaction in your wallet."}
         </p>
       </div>
 

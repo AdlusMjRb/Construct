@@ -88,7 +88,7 @@ router.post("/prepare", async (req, res) => {
       },
       storageHash: storage.rootHash,
       storageScanUrl: "https://storagescan-galileo.0g.ai/submissions",
-      agentAddress: signer.address,
+      agentAddress: config.keeperHubAgentAddress || signer.address,
       budget: totalBudget,
     });
   } catch (err) {

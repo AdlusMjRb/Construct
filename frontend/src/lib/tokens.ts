@@ -80,7 +80,7 @@ export const inpFrozen: CSSProperties = {
 export const btnP: CSSProperties = {
   width: "100%",
   padding: "17px",
-  background: "#0f7173",
+  background: "#0a4143",
   border: "none",
   borderRadius: "12px",
   color: "#fff",

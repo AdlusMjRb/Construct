@@ -11,6 +11,9 @@ export const config = {
   },
   privateKey: process.env.DEPLOYER_PRIVATE_KEY || null,
   anthropicKey: process.env.ANTHROPIC_API_KEY || null,
+  keeperHubAgentAddress: process.env.KEEPERHUB_AGENT_ADDRESS || null,
+  keeperHubWebhookUrl: process.env.KEEPERHUB_WEBHOOK_URL || null,
+  keeperHubApiKey: process.env.KEEPERHUB_API_KEY || null,
   storage: {
     indexerRpc:
       process.env.ZG_STORAGE_INDEXER_RPC ||

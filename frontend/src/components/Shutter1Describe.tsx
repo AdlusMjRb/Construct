@@ -51,23 +51,11 @@ export const Shutter1Describe = ({
       )}
 
       <div style={{ marginBottom: "36px", textAlign: "center" }}>
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: P.teal,
-            padding: "10px 10px",
-            borderRadius: "14px",
-            marginBottom: "16px",
-          }}
-        >
-          <img
-            src={logo}
-            alt="Construct"
-            style={{ height: 85, display: "block" }}
-          />
-        </div>
+        <img
+          src={logo}
+          alt="Construct"
+          style={{ height: 84, margin: "0 auto", display: "block" }}
+        />
         <div
           style={{
             fontSize: "11px",
@@ -75,10 +63,10 @@ export const Shutter1Describe = ({
             letterSpacing: "4px",
             textTransform: "uppercase",
             color: P.teal,
-            marginBottom: "16px",
+            marginBottom: "56px",
           }}
         >
-          Describe Your Project
+          Autonomous Planning, Provenance and Payments
         </div>
         <p
           style={{
@@ -87,18 +75,17 @@ export const Shutter1Describe = ({
             marginTop: "10px",
           }}
         >
-          Autonomous construction escrow agent
+          Step One{" "}
         </p>
         <p
           style={{
-            fontSize: "12px",
-            color: P.textDim,
+            fontSize: "14px",
+            color: P.textMid,
             marginTop: "6px",
             fontStyle: "italic",
           }}
         >
-          Write in any language — milestones will be generated in the same
-          language.
+          Describe your project and let Construct generate your milestones
         </p>
       </div>
 

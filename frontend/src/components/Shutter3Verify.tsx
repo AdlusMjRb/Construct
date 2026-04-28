@@ -114,9 +114,20 @@ export const Shutter3Verify = ({
             marginBottom: "12px",
           }}
         >
-          03 — Evidence & Verify
+          Step Three
         </div>
-
+        <p
+          style={{
+            fontSize: "14px",
+            color: P.textMid,
+            marginTop: "6px",
+            fontStyle: "italic",
+            marginBottom: "20px",
+          }}
+        >
+          Contractors can check milestones, payment critira, upload evidance and
+          verify for payments.
+        </p>
         {deploymentData && (
           <div
             style={{
