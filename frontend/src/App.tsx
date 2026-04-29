@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import {
+  useAccount,
+  usePublicClient,
+  useSwitchChain,
+  useWalletClient,
+} from "wagmi";
 import { parseEther } from "viem";
+import { sepolia } from "./lib/chains";
 
 import {
   apiGenerateMilestones,
@@ -24,6 +30,12 @@ import { AlertIcon, CheckIcon, PinIcon } from "./components/icons";
 import { Shutter1Describe } from "./components/Shutter1Describe";
 import { Shutter2Review } from "./components/Shutter2Review";
 import { Shutter3Verify } from "./components/Shutter3Verify";
+import {
+  sepoliaPublicClient,
+  PUBLIC_RESOLVER_ADDRESS,
+  MPC_WALLET_ADDRESS,
+  RESOLVER_APPROVAL_ABI,
+} from "./lib/sepolia-client";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -123,6 +135,7 @@ async function waitForReceiptResilient(
 export default function App() {
   const { address: userAddress, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
+  const { switchChainAsync } = useSwitchChain();
   const publicClient = usePublicClient();
 
   // ─── Lifecycle state ───────────────────────────────────────────
@@ -188,6 +201,11 @@ export default function App() {
   const [translating, setTranslating] = useState(false);
 
   // ─── Derived state ─────────────────────────────────────────────
+  const APPROVING_MPC_MESSAGES = [
+    "Granting Construct permission to update this project...",
+    "Confirming approval on Sepolia...",
+  ];
+
   const MINTING_SUBNAME_MESSAGES = [
     "Routing through MPC wallet...",
     "Signing on Sepolia...",
@@ -207,18 +225,16 @@ export default function App() {
     MINTING_SUBNAME_MESSAGES,
     loadingPhase === "minting-subname",
   );
+  const approvingMsg = useLoadingMessages(
+    APPROVING_MPC_MESSAGES,
+    loadingPhase === "approving-mpc",
+  );
+
   const fees = calculateFees(milestones);
   const allLocked = milestones.length > 0 && milestones.every((m) => m.locked);
 
-  // displayMilestones is what Shutter 3 renders. It's either the canonical
-  // milestones (when displayLang === canonicalLang) or the translated copy.
-  // NEVER pass this into handleVerifySingle — that must always read `milestones`.
   const displayMilestones = translatedMilestones || milestones;
 
-  // Same contract for verification results. Merge pattern means any
-  // milestone missing a translation falls back to canonical rather than
-  // showing nothing — matters during the brief window between verify
-  // completing and translateAndStoreResult finishing.
   const displayResults =
     displayLang !== canonicalLang && translatedVerificationResults
       ? { ...verificationResults, ...translatedVerificationResults }
@@ -355,11 +371,6 @@ export default function App() {
       const contractAddress = deployReceipt.contractAddress;
 
       // Cross-chain step: mint the project's ENS identity on Sepolia.
-      // The MPC wallet (KeeperHub) signs on a different chain than the one
-      // we just deployed to. Backend polls Sepolia until confirmed.
-      // If this fails the escrow still exists and is fully usable — the
-      // identity layer just hasn't been minted yet. Surface as a soft
-      // warning rather than a hard failure.
       setLoadingPhase("minting-subname");
       let ensData: Awaited<ReturnType<typeof apiMintSubname>> | null = null;
       try {
@@ -373,6 +384,45 @@ export default function App() {
         setErrorMessage(
           "Project escrow deployed successfully, but ENS identity could not be minted. You can retry from the project view.",
         );
+      }
+
+      // Approval step: grant MPC permission to write text records on the
+      // PublicResolver. Resolver approval is per-(owner, operator), not
+      // per-name, so this is a one-time grant covering all current and
+      // future projects this user creates. We use localStorage to skip
+      // re-prompting users who've already approved (the resolver doesn't
+      // expose a cheap on-chain readback).
+      if (ensData) {
+        try {
+          const approvalKey = `resolver-approved:${userAddress.toLowerCase()}`;
+          const alreadyApproved = localStorage.getItem(approvalKey) === "true";
+
+          if (!alreadyApproved) {
+            setLoadingPhase("approving-mpc");
+            await switchChainAsync({ chainId: sepolia.id });
+            const approvalHash = await walletClient.writeContract({
+              chain: sepolia,
+              address: PUBLIC_RESOLVER_ADDRESS,
+              abi: RESOLVER_APPROVAL_ABI,
+              functionName: "setApprovalForAll",
+              args: [MPC_WALLET_ADDRESS, true],
+            });
+            await sepoliaPublicClient.waitForTransactionReceipt({
+              hash: approvalHash,
+              timeout: 120_000,
+              pollingInterval: 4_000,
+            });
+            localStorage.setItem(approvalKey, "true");
+            console.log("Resolver approval granted on Sepolia:", approvalHash);
+          } else {
+            console.log("Resolver approval cached locally, skipping prompt");
+          }
+        } catch (approvalErr) {
+          console.error("Resolver approval failed:", approvalErr);
+          setErrorMessage(
+            "ENS identity created, but Construct couldn't be authorised to update its records. The agent will still complete milestones — you can grant permission later.",
+          );
+        }
       }
 
       setDeploymentData({
@@ -806,9 +856,11 @@ export default function App() {
                   ? "Confirm in wallet to deploy contract..."
                   : loadingPhase === "minting-subname"
                     ? mintingMsg
-                    : releasingMilestone
-                      ? "Confirm in wallet to release payment..."
-                      : "Verifying evidence..."}
+                    : loadingPhase === "approving-mpc"
+                      ? approvingMsg
+                      : releasingMilestone
+                        ? "Confirm in wallet to release payment..."
+                        : "Verifying evidence..."}
           </div>
         )}
 

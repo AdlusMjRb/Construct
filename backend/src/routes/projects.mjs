@@ -3,8 +3,12 @@ import { ethers } from "ethers";
 import { generateMilestones } from "../agent/claude.mjs";
 import { uploadSpec } from "../storage/storage.mjs";
 import { config } from "../config.mjs";
-import { mintSubname, slugifyLabel } from "../keeperhub/ens.mjs";
-
+import {
+  mintSubname,
+  slugifyLabel,
+  setTextRecord,
+  readTextRecord,
+} from "../keeperhub/ens.mjs";
 const router = Router();
 
 function sendError(res, err, status = 400) {
@@ -90,6 +94,26 @@ router.post("/mint-subname", async (req, res) => {
     });
   } catch (err) {
     sendError(res, err, err.message?.includes("KH") ? 502 : 400);
+  }
+});
+
+router.post("/set-text", async (req, res) => {
+  try {
+    const { subname, key, value } = req.body ?? {};
+    const result = await setTextRecord({ subname, key, value });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    sendError(res, err, err.message?.includes("KH") ? 502 : 400);
+  }
+});
+
+router.get("/read-text", async (req, res) => {
+  try {
+    const { subname, key } = req.query;
+    const value = await readTextRecord({ subname, key });
+    res.json({ ok: true, subname, key, value });
+  } catch (err) {
+    sendError(res, err);
   }
 });
 

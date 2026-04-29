@@ -557,3 +557,37 @@ RPC: https://evmrpc-testnet.0g.ai
 🟦 mintSubname: triggering KH webhook for test-project-smoke-run-922cd9.construct.eth → 0x77a503CEACAaCC3B8538e9E3DEC1485AdB16Ae9c
 🟦 mintSubname: KH accepted, polling Sepolia for confirmation... { executionId: 'rvxx01c23dxewg3n90cti', status: 'running' }
 ✅ mintSubname: test-project-smoke-run-922cd9.construct.eth confirmed in 0x77a503CEACAaCC3B8538e9E3DEC1485AdB16Ae9c after 12288ms
+
+===================== LOG 29th 15:18 Resolver auth chain =====================
+
+Hit `Contract call failed: missing revert data` on every `setText` attempt despite the user having signed approvals. Took three rounds of on-chain diagnostics to find the right answer.
+
+The wrong answers (signed for, didn't help):
+
+- `NameWrapper.setApprovalForAll(MPC, true)` — only governs NFT transfers. Not record writes.
+- `ENS Registry.setApprovalForAll(MPC, true)` — would work for _unwrapped_ names. For wrapped names the registry owner is NameWrapper, so the user-level approval here doesn't propagate to anything that matters.
+
+The right answer:
+
+- `PublicResolver.setApprovalForAll(MPC, true)` — each ENS resolver has its own operator approval mapping, independent of NameWrapper and Registry. For wrapped names, this is the only path that authorises an external account to write text records.
+
+The resolver doesn't expose `isApprovedForAll` as a public view, so we can't cheaply read approval status back. Cached per-user in `localStorage` to avoid re-prompting.
+
+Diagnostic that nailed it: simulating `setText` via `eth_call` from three different `from` addresses (USER, MPC, NameWrapper). Only USER succeeded, which proved the resolver doesn't honour `canModifyName` from NameWrapper despite the wrapper saying MPC was authorised. That's the moment "we need approval _on the resolver itself_" became the only remaining path.
+
+alexander@AlexandersMBP2 backend % curl -X POST http://localhost:3001/api/projects/set-text \
+ -H "Content-Type: application/json" \
+ -d '{"subname":"test-54447f.construct.eth","key":"escrow_address","value":"0xtest_after_resolver_approval"}'
+{"ok":true,"subname":"test-54447f.construct.eth","node":"0xd5b3006a883b1d3fe1298eede6e4e143bf067eca0ddf49277a13e133b9dd1e35","key":"escrow_address","value":"0xtest_after_resolver_approval","executionId":"0abbukkfi3s2bm6k301au","status":"running"}%  
+alexander@AlexandersMBP2 backend % curl "http://localhost:3001/api/projects/read-text?subname=test-54447f.construct.eth&key=escrow_address"
+{"ok":true,"subname":"test-54447f.construct.eth","key":"escrow_address","value":"0xtest_after_resolver_approval"}%
+
+Confirmed end-to-end: backend → KH webhook → MPC signs setText on Sepolia → 13s confirmation → backend read returns expected value.
+
+Approvals signed during this session (all preserved):
+
+1. NameWrapper approval — still useful for the future handover demo (NFT transfers)
+2. ENS Registry approval — wasted, no harm
+3. PublicResolver approval — this is the one that does the work
+
+Three signatures the first time a user creates a project (escrow deploy, network switch, resolver approval). One signature on subsequent projects (just escrow). Acceptable trade-off.

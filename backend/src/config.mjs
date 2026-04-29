@@ -15,6 +15,7 @@ export const config = {
   keeperHubWebhookUrl: process.env.KEEPERHUB_WEBHOOK_URL || null,
   keeperHubMintSubnameUrl: process.env.KEEPERHUB_MINT_SUBNAME_URL || null,
   keeperHubApiKey: process.env.KEEPERHUB_API_KEY || null,
+  keeperHubSetTextUrl: process.env.KEEPERHUB_SET_TEXT_URL || null,
   sepoliaRpcUrl: process.env.SEPOLIA_RPC_URL,
   storage: {
     indexerRpc:

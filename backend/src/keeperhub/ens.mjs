@@ -5,7 +5,7 @@ const SEPOLIA_RPC = config.sepoliaRpcUrl;
 const NAME_WRAPPER_ADDRESS = "0x0635513f179D50A207757E05759CbD106d7dFcE8";
 const CONSTRUCT_ETH_NODE =
   "0xa928fb464ab38cca42be101dfc290e4910c5d6bc5d904a454e9e198eb0856a08";
-
+const PUBLIC_RESOLVER_ADDRESS = "0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5";
 const NAME_WRAPPER_ABI = [
   "function ownerOf(uint256 id) view returns (address)",
   "function balanceOf(address account, uint256 id) view returns (uint256)",
@@ -46,6 +46,23 @@ export function computeSubnameTokenId(label) {
   const labelHash = ethers.keccak256(ethers.toUtf8Bytes(label));
   const node = ethers.keccak256(ethers.concat([CONSTRUCT_ETH_NODE, labelHash]));
   return BigInt(node);
+}
+
+/**
+ * Compute namehash from a full ENS name (e.g. "tylers-tools.construct.eth").
+ * The result is bytes32 (0x-prefixed, 64 hex chars). This IS the same value
+ * as the subname tokenId, just expressed as bytes32 not uint256.
+ */
+export function namehash(name) {
+  let node =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
+  if (!name) return node;
+  const labels = name.split(".").reverse();
+  for (const label of labels) {
+    const labelHash = ethers.keccak256(ethers.toUtf8Bytes(label));
+    node = ethers.keccak256(ethers.concat([node, labelHash]));
+  }
+  return node;
 }
 
 /**
@@ -146,4 +163,87 @@ export async function mintSubname({
   throw new Error(
     `Subname ${fullName} not confirmed in ${ownerWallet} within ${timeoutMs}ms — check KH execution log`,
   );
+}
+
+/**
+ * Trigger KeeperHub setText workflow to write a text record on a wrapped
+ * subname's resolver. MPC wallet signs the tx on Sepolia.
+ *
+ * @param {object} params
+ * @param {string} params.subname - Full ENS name, e.g. "tylers-tools.construct.eth"
+ * @param {string} params.key - Text record key (e.g. "escrow_address")
+ * @param {string} params.value - Text record value
+ * @returns {Promise<{ subname, node, key, value, executionId }>}
+ */
+export async function setTextRecord({ subname, key, value }) {
+  if (!config.keeperHubApiKey) {
+    throw new Error("KEEPERHUB_API_KEY is not set in .env");
+  }
+  if (!config.keeperHubSetTextUrl) {
+    throw new Error("KEEPERHUB_SET_TEXT_URL is not set in .env");
+  }
+  if (!subname || typeof subname !== "string") {
+    throw new Error("subname must be a non-empty string");
+  }
+  if (!key || typeof key !== "string") {
+    throw new Error("key must be a non-empty string");
+  }
+  if (typeof value !== "string") {
+    throw new Error("value must be a string (use empty string for no value)");
+  }
+
+  const node = namehash(subname);
+
+  console.log(
+    `   🟧 setText: ${subname} → ${key} = "${value.slice(0, 60)}${value.length > 60 ? "..." : ""}"`,
+  );
+
+  const webhookRes = await fetch(config.keeperHubSetTextUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.keeperHubApiKey}`,
+    },
+    body: JSON.stringify({ node, key, value }),
+  });
+
+  if (!webhookRes.ok) {
+    const text = await webhookRes.text();
+    throw new Error(
+      `KH setText webhook failed (${webhookRes.status}): ${text}`,
+    );
+  }
+
+  const webhookData = await webhookRes.json().catch(() => ({}));
+  console.log(
+    `   🟧 setText: KH accepted (executionId=${webhookData.executionId})`,
+  );
+
+  // Optional: poll the resolver to confirm the value lands on-chain. We can
+  // skip this for batched writes (just fire-and-forget) and add a single
+  // final confirmation read after all records are set. For now, return the
+  // execution metadata.
+  return {
+    subname,
+    node,
+    key,
+    value,
+    executionId: webhookData.executionId,
+    status: webhookData.status ?? "submitted",
+  };
+}
+
+/**
+ * Read a text record back from the resolver. Used for verification and for
+ * inbound subname recognition (reading project state into the frontend).
+ */
+export async function readTextRecord({ subname, key }) {
+  const provider = getSepoliaProvider();
+  const resolver = new ethers.Contract(
+    PUBLIC_RESOLVER_ADDRESS,
+    ["function text(bytes32 node, string key) view returns (string)"],
+    provider,
+  );
+  const node = namehash(subname);
+  return await resolver.text(node, key);
 }
