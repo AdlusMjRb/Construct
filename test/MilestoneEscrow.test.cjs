@@ -23,6 +23,9 @@ describe("MilestoneEscrow", function () {
       agent.address,
       STORAGE_HASH,
       BUDGET,
+      //new test additions for wrappers - 29th Apr
+      ethers.ZeroAddress,
+      0,
     );
   }
 
@@ -48,6 +51,8 @@ describe("MilestoneEscrow", function () {
           agent.address,
           STORAGE_HASH,
           BUDGET,
+          ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+          0, // subnameTokenId
         ),
       ).to.be.revertedWith("Length mismatch");
     });
@@ -62,6 +67,8 @@ describe("MilestoneEscrow", function () {
           agent.address,
           STORAGE_HASH,
           BUDGET,
+          ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+          0, // subnameTokenId
         ),
       ).to.be.revertedWith("No milestones");
     });
@@ -76,6 +83,8 @@ describe("MilestoneEscrow", function () {
           agent.address,
           STORAGE_HASH,
           BUDGET,
+          ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+          0, // subnameTokenId
         ),
       ).to.be.revertedWith("Invalid payee");
     });
@@ -90,6 +99,8 @@ describe("MilestoneEscrow", function () {
           ethers.ZeroAddress,
           STORAGE_HASH,
           BUDGET,
+          ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+          0, // subnameTokenId
         ),
       ).to.be.revertedWith("Invalid agent");
     });
@@ -104,6 +115,8 @@ describe("MilestoneEscrow", function () {
           agent.address,
           STORAGE_HASH,
           0,
+          ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+          0, // subnameTokenId
         ),
       ).to.be.revertedWith("Budget must be > 0");
     });
@@ -118,6 +131,8 @@ describe("MilestoneEscrow", function () {
           agent.address,
           STORAGE_HASH,
           BUDGET,
+          ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+          0, // subnameTokenId
         ),
       ).to.be.revertedWith("Percentages must sum to 100");
     });
@@ -234,6 +249,8 @@ describe("MilestoneEscrow", function () {
         agent.address,
         STORAGE_HASH,
         BUDGET,
+        ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+        0, // subnameTokenId
         { value: required },
       );
       expect(await escrow.funded()).to.equal(true);
@@ -357,6 +374,8 @@ describe("MilestoneEscrow", function () {
         agent.address,
         STORAGE_HASH,
         BUDGET,
+        ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+        0, // subnameTokenId
       );
       await escrow.connect(funder).fund({ value: requiredFunding(BUDGET) });
 
@@ -392,6 +411,8 @@ describe("MilestoneEscrow", function () {
         agent.address,
         STORAGE_HASH,
         BUDGET,
+        ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+        0, // subnameTokenId
       );
       await escrow.connect(funder).fund({ value: requiredFunding(BUDGET) });
 
@@ -412,6 +433,8 @@ describe("MilestoneEscrow", function () {
         agent.address,
         STORAGE_HASH,
         BUDGET,
+        ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+        0, // subnameTokenId
       );
       await escrow.connect(funder).fund({ value: requiredFunding(BUDGET) });
 
@@ -434,6 +457,8 @@ describe("MilestoneEscrow", function () {
         agent.address,
         STORAGE_HASH,
         BUDGET,
+        ethers.ZeroAddress, // nameWrapper (no ENS for default tests)
+        0, // subnameTokenId
       );
       await escrow.connect(funder).fund({ value: requiredFunding(BUDGET) });
 
@@ -443,6 +468,96 @@ describe("MilestoneEscrow", function () {
 
       expect(await escrow.totalReleased()).to.equal(BUDGET);
       expect(await escrow.isFullyComplete()).to.equal(true);
+    });
+  });
+  describe("transferProjectOwnership (ENS handover)", function () {
+    let escrow, nameWrapper;
+    const SUBNAME_TOKEN_ID = 12345n;
+
+    beforeEach(async function () {
+      const NameWrapper = await ethers.getContractFactory("MockNameWrapper");
+      nameWrapper = await NameWrapper.deploy();
+      await nameWrapper.mint(owner.address, SUBNAME_TOKEN_ID);
+
+      const Escrow = await ethers.getContractFactory("MilestoneEscrow");
+      escrow = await Escrow.deploy(
+        ["Foundation", "Walls"],
+        [50, 50],
+        payee.address,
+        agent.address,
+        STORAGE_HASH,
+        BUDGET,
+        await nameWrapper.getAddress(),
+        SUBNAME_TOKEN_ID,
+      );
+
+      // owner pre-approves escrow to move the NFT (the one-time UX step)
+      await nameWrapper
+        .connect(owner)
+        .setApprovalForAll(await escrow.getAddress(), true);
+    });
+
+    it("transfers contract owner and subname NFT atomically", async function () {
+      await escrow.connect(owner).transferProjectOwnership(funder.address);
+
+      expect(await escrow.owner()).to.equal(funder.address);
+      expect(await nameWrapper.ownerOf(SUBNAME_TOKEN_ID)).to.equal(
+        funder.address,
+      );
+    });
+
+    it("emits ProjectOwnershipTransferred with old owner, new owner, tokenId", async function () {
+      await expect(
+        escrow.connect(owner).transferProjectOwnership(funder.address),
+      )
+        .to.emit(escrow, "ProjectOwnershipTransferred")
+        .withArgs(owner.address, funder.address, SUBNAME_TOKEN_ID);
+    });
+
+    it("reverts when called by non-owner", async function () {
+      await expect(
+        escrow.connect(attacker).transferProjectOwnership(funder.address),
+      ).to.be.revertedWith("Only owner");
+    });
+
+    it("reverts when called by the agent (only owner can hand over)", async function () {
+      await expect(
+        escrow.connect(agent).transferProjectOwnership(funder.address),
+      ).to.be.revertedWith("Only owner");
+    });
+
+    it("reverts when newOwner is the zero address", async function () {
+      await expect(
+        escrow.connect(owner).transferProjectOwnership(ethers.ZeroAddress),
+      ).to.be.revertedWith("Invalid new owner");
+    });
+
+    it("reverts when escrow lacks NameWrapper approval", async function () {
+      await nameWrapper
+        .connect(owner)
+        .setApprovalForAll(await escrow.getAddress(), false);
+
+      await expect(
+        escrow.connect(owner).transferProjectOwnership(funder.address),
+      ).to.be.revertedWith("Not approved");
+    });
+
+    it("reverts on 0G-style deploy where nameWrapper = address(0)", async function () {
+      const Escrow = await ethers.getContractFactory("MilestoneEscrow");
+      const noEnsEscrow = await Escrow.deploy(
+        ["A"],
+        [100],
+        payee.address,
+        agent.address,
+        STORAGE_HASH,
+        BUDGET,
+        ethers.ZeroAddress,
+        0,
+      );
+
+      await expect(
+        noEnsEscrow.connect(owner).transferProjectOwnership(funder.address),
+      ).to.be.revertedWith("ENS handover not supported on this chain");
     });
   });
 });

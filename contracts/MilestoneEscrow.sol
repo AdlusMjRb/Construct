@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+interface INameWrapper {
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 id,
+        uint256 amount,
+        bytes calldata data
+    ) external;
+}
+
 contract MilestoneEscrow {
     struct Milestone {
         string name;
@@ -14,6 +24,8 @@ contract MilestoneEscrow {
     address public agent;
     address payable public payee;
     string public storageHash;
+address public immutable nameWrapper;
+uint256 public immutable subnameTokenId;
 
     Milestone[] public milestones;
 
@@ -32,6 +44,7 @@ contract MilestoneEscrow {
     event EscrowFullyComplete(uint256 totalReleased, address payee);
     event AgentGasRefund(address indexed agent, uint256 amount);
     event ReserveReturned(address indexed owner, uint256 amount);
+event ProjectOwnershipTransferred(address indexed oldOwner, address indexed newOwner, uint256 tokenId);
 
     modifier onlyOwnerOrAgent() {
         require(msg.sender == owner || msg.sender == agent, "Not owner or agent");
@@ -43,8 +56,10 @@ contract MilestoneEscrow {
         uint256[] memory _percentages,
         address payable _payee,
         address _agent,
-        string memory _storageHash,
-        uint256 _budget
+    string memory _storageHash,
+    uint256 _budget,
+    address _nameWrapper,
+    uint256 _subnameTokenId
     ) payable {
         require(_names.length == _percentages.length, "Length mismatch");
         require(_names.length > 0, "No milestones");
@@ -71,6 +86,8 @@ contract MilestoneEscrow {
         storageHash = _storageHash;
         budget = _budget;
         deployedAt = block.timestamp;
+    nameWrapper = _nameWrapper;
+    subnameTokenId = _subnameTokenId;
 
         if (msg.value > 0) {
             _processFunding();
@@ -174,6 +191,19 @@ if (overpayment > 0) {
             }
         }
     }
+
+    function transferProjectOwnership(address newOwner) external {
+    require(msg.sender == owner, "Only owner");
+    require(newOwner != address(0), "Invalid new owner");
+    require(nameWrapper != address(0), "ENS handover not supported on this chain");
+
+    address oldOwner = owner;
+    owner = newOwner;
+
+    INameWrapper(nameWrapper).safeTransferFrom(oldOwner, newOwner, subnameTokenId, 1, "");
+
+    emit ProjectOwnershipTransferred(oldOwner, newOwner, subnameTokenId);
+}
 
     function getMilestoneCount() external view returns (uint256) {
         return milestones.length;
