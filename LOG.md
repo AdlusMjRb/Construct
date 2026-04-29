@@ -437,9 +437,9 @@ Single file upload completed - returning single result
 
 ===================== LOG 29th 00:33 ENS naming regestered and wrap tested. =====================
 
-# alexander@AlexandersMBP2 backend % node --env-file=.env scripts/register-construct-eth.mjs
+alexander@AlexandersMBP2 backend % node --env-file=.env scripts/register-construct-eth.mjs
 
-# Construct — Register construct.eth
+Construct — Register construct.eth
 
 Server wallet (signer): 0xdf6cA46F65159658Ac52736CeBD806C16095B078
 MPC wallet (final owner): 0xFc49AFB213B4284D9Ab5c1175ACE87b65cf440ce
@@ -471,9 +471,8 @@ tx: 0xd03ac02c6c72bdc49964df9955c599fdcd0d2ba67cde52cd32743809b1250ed2
 tx: 0x7d1cab10164b817d10dfdd5f1b289555bc8880d597878ef5e1ded69218e99dea
 ✅ wrapped + locked, NFT minted to MPC
 
-========================================
 RESULTS
-========================================
+
 Name: construct.eth
 Namehash: 0xa928fb464ab38cca42be101dfc290e4910c5d6bc5d904a454e9e198eb0856a08
 TokenId: 76513279526559438293681169021200286427019135183781895130539114173093294467592
@@ -484,3 +483,77 @@ Wallet now has: 0.014310046078511213 ETH (spent 0.015689953921488787)
 
 🎉 SUCCESS — construct.eth is wrapped, locked (CANNOT_UNWRAP), owned by MPC.
 Verify visually: https://sepolia.app.ens.domains/construct.eth
+
+===================== LOG 29th 10:03 New Wrapped .sol test completed =====================
+
+MilestoneEscrow
+deployment & constructor validation
+✔ deploys with valid parameters and sets all state (39ms)
+✔ reverts when names and percentages length mismatch
+✔ reverts when there are no milestones
+✔ reverts when payee is the zero address
+✔ reverts when agent is the zero address
+✔ reverts when budget is zero
+✔ reverts when percentages do not sum to 100
+✔ getRequiredFunding returns budget + 5% agent fee
+funding
+✔ accepts funding via fund() and marks the escrow funded
+✔ reverts when funding is less than budget + agent fee
+✔ reverts when funded twice
+✔ primes the agent wallet with half the agent fee
+✔ holds the other half of the agent fee as gas reserve
+✔ allocates milestone amounts proportionally
+✔ refunds overpayment to the funder
+✔ emits Funded with correct funder, escrow amount, reserve, and primed values
+✔ supports funding directly in the constructor
+completeMilestone
+✔ releases payment to the payee when called by the owner
+✔ releases payment when called by the agent
+✔ reverts when called by anyone other than owner or agent
+✔ reverts on invalid milestone id
+✔ reverts when completing a milestone twice
+✔ marks the milestone as completed and stores the timestamp
+✔ updates totalReleased after each completion
+✔ emits MilestoneCompleted with id, amount, and payee
+✔ emits EscrowFullyComplete after the last milestone
+✔ returns the leftover gas reserve to the owner on full completion
+✔ emits ReserveReturned on full completion
+✔ isFullyComplete reports true after all milestones complete
+agent gas refund
+✔ refunds the agent for gas used on a non-final milestone
+✔ does NOT refund the agent on the final milestone (reserve already returned to owner)
+edge cases
+✔ works with a single milestone at 100%
+✔ handles rounding by giving the remainder to the last milestone
+✔ handles many milestones (10 at 10% each)
+transferProjectOwnership (ENS handover)
+✔ transfers contract owner and subname NFT atomically
+✔ emits ProjectOwnershipTransferred with old owner, new owner, tokenId
+✔ reverts when called by non-owner
+✔ reverts when called by the agent (only owner can hand over)
+✔ reverts when newOwner is the zero address
+✔ reverts when escrow lacks NameWrapper approval
+✔ reverts on 0G-style deploy where nameWrapper = address(0)
+
+41 passing (1s)
+
+===================== LOG 29th 12:31 Working on flow with new ENS Sepolia // 0G storage duel chain // Keeper Workflow =====================
+
+User submits form → /generate → milestones generated
+User reviews → /prepare → returns bytecode + storage hash
+Frontend deploys escrow with user's wallet (existing flow, unchanged)
+NEW: Frontend calls /api/projects/mint-subname with { escrowAddress, userWallet, projectTitle }
+Backend mints subname on Sepolia via KH, polls for confirmation, returns tokenId
+NEW: Backend writes initial text records on Sepolia (escrow_address, escrow_chain, status, etc.) — though this is Step 2c, after we build the setText workflow
+Frontend funds escrow (existing flow)
+
+────────────────────────────────────────────────────────────
+Construct Backend
+────────────────────────────────────────────────────────────
+Listening on http://localhost:3001
+Network: 0G Galileo Testnet (chainId 16602)
+RPC: https://evmrpc-testnet.0g.ai
+────────────────────────────────────────────────────────────
+🟦 mintSubname: triggering KH webhook for test-project-smoke-run-922cd9.construct.eth → 0x77a503CEACAaCC3B8538e9E3DEC1485AdB16Ae9c
+🟦 mintSubname: KH accepted, polling Sepolia for confirmation... { executionId: 'rvxx01c23dxewg3n90cti', status: 'running' }
+✅ mintSubname: test-project-smoke-run-922cd9.construct.eth confirmed in 0x77a503CEACAaCC3B8538e9E3DEC1485AdB16Ae9c after 12288ms
