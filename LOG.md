@@ -449,9 +449,6 @@ Duration: 5 years
 Server wallet balance: 0.03 ETH
 Rent: 0.01562500000001745 ETH (paying 0.017187500000019195 with 10% pad)
 
-🔑 SECRET — save this in case the script crashes mid-flow:
-REDACTED
-
 Commitment: 0xaaadfa1203da8834cc09022725da61432b7ea3ca05ff355def5abda4c88502ec
 
 → commit()...
