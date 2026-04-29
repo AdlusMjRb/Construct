@@ -64,6 +64,9 @@ export interface DeploymentData {
   storageScanUrl?: string;
   escrowAmount?: string;
   agentReserve?: string;
+  ensSubname?: string | null;
+  ensTokenId?: string | null;
+  ensSepoliaUrl?: string | null;
 }
 
 export interface CriterionCheck {

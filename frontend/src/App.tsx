@@ -7,6 +7,7 @@ import { parseEther } from "viem";
 import {
   apiGenerateMilestones,
   apiGetEscrow,
+  apiMintSubname,
   apiPrepareProject,
   apiTranslateSpec,
   apiTranslateVerification,
@@ -120,7 +121,7 @@ async function waitForReceiptResilient(
 // ─── Main App ────────────────────────────────────────────────────
 
 export default function App() {
-  const { isConnected } = useAccount();
+  const { address: userAddress, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
 
@@ -187,6 +188,13 @@ export default function App() {
   const [translating, setTranslating] = useState(false);
 
   // ─── Derived state ─────────────────────────────────────────────
+  const MINTING_SUBNAME_MESSAGES = [
+    "Routing through MPC wallet...",
+    "Signing on Sepolia...",
+    "Wrapping ENS subname...",
+    "Confirming on-chain...",
+  ];
+
   const generateMsg = useLoadingMessages(
     GENERATE_MESSAGES,
     loadingPhase === "generating",
@@ -194,6 +202,10 @@ export default function App() {
   const deployMsg = useLoadingMessages(
     DEPLOY_MESSAGES,
     loadingPhase === "deploying",
+  );
+  const mintingMsg = useLoadingMessages(
+    MINTING_SUBNAME_MESSAGES,
+    loadingPhase === "minting-subname",
   );
   const fees = calculateFees(milestones);
   const allLocked = milestones.length > 0 && milestones.every((m) => m.locked);
@@ -299,7 +311,7 @@ export default function App() {
       setErrorMessage("Developer wallet address is required.");
       return;
     }
-    if (!isConnected || !walletClient || !publicClient) {
+    if (!isConnected || !walletClient || !publicClient || !userAddress) {
       setErrorMessage("Please connect your wallet first.");
       return;
     }
@@ -310,6 +322,7 @@ export default function App() {
       const prepared = await apiPrepareProject({
         milestones,
         developerWallet: devWallet,
+        userWallet: userAddress,
         projectTitle,
         projectSummary: projectDescription,
         totalBudget: totalPool,
@@ -326,6 +339,8 @@ export default function App() {
           prepared.agentAddress as `0x${string}`,
           prepared.storageHash,
           parseEther(fees.budget.toString()),
+          "0x0000000000000000000000000000000000000000" as `0x${string}`,
+          0n,
         ],
         value: parseEther(fees.total.toString()),
       });
@@ -339,6 +354,27 @@ export default function App() {
       }
       const contractAddress = deployReceipt.contractAddress;
 
+      // Cross-chain step: mint the project's ENS identity on Sepolia.
+      // The MPC wallet (KeeperHub) signs on a different chain than the one
+      // we just deployed to. Backend polls Sepolia until confirmed.
+      // If this fails the escrow still exists and is fully usable — the
+      // identity layer just hasn't been minted yet. Surface as a soft
+      // warning rather than a hard failure.
+      setLoadingPhase("minting-subname");
+      let ensData: Awaited<ReturnType<typeof apiMintSubname>> | null = null;
+      try {
+        ensData = await apiMintSubname({
+          escrowAddress: contractAddress,
+          userWallet: userAddress,
+          projectTitle,
+        });
+      } catch (mintErr) {
+        console.error("Subname mint failed (escrow still deployed):", mintErr);
+        setErrorMessage(
+          "Project escrow deployed successfully, but ENS identity could not be minted. You can retry from the project view.",
+        );
+      }
+
       setDeploymentData({
         contractAddress,
         storageHash: prepared.storageHash,
@@ -348,6 +384,9 @@ export default function App() {
         storageScanUrl: prepared.storageScanUrl,
         escrowAmount: fees.budget.toFixed(4),
         agentReserve: fees.agentFee.toFixed(4),
+        ensSubname: ensData?.fullName ?? null,
+        ensTokenId: ensData?.tokenId ?? null,
+        ensSepoliaUrl: ensData?.sepoliaScanUrl ?? null,
       });
       setTimeout(() => {
         setActiveShutter(2);
@@ -765,9 +804,11 @@ export default function App() {
                 ? deployMsg
                 : loadingPhase === "wallet-deploy"
                   ? "Confirm in wallet to deploy contract..."
-                  : releasingMilestone
-                    ? "Confirm in wallet to release payment..."
-                    : "Verifying evidence..."}
+                  : loadingPhase === "minting-subname"
+                    ? mintingMsg
+                    : releasingMilestone
+                      ? "Confirm in wallet to release payment..."
+                      : "Verifying evidence..."}
           </div>
         )}
 

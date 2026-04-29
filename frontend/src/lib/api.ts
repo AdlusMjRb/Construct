@@ -94,9 +94,12 @@ export async function apiGenerateMilestones(
   };
 }
 
+// 1. Add userWallet to the apiPrepareProject params + body
+
 export async function apiPrepareProject(params: {
   milestones: Milestone[];
   developerWallet: string;
+  userWallet: string; // ← NEW
   projectTitle: string;
   projectSummary: string;
   totalBudget: string;
@@ -114,6 +117,7 @@ export async function apiPrepareProject(params: {
         percentage: m.percentage,
       })),
       developerWallet: params.developerWallet,
+      userWallet: params.userWallet, // ← NEW
       projectTitle: params.projectTitle,
       projectSummary: params.projectSummary,
       totalBudget: params.totalBudget,
@@ -121,6 +125,32 @@ export async function apiPrepareProject(params: {
     }),
   });
   return unwrap<PrepareProjectResponse>(res);
+}
+
+// 2. New function for mint-subname (add anywhere in the file)
+
+export interface MintSubnameResponse {
+  label: string;
+  fullName: string;
+  tokenId: string;
+  ownerWallet: string;
+  confirmedAt: string;
+  elapsedMs: number;
+  escrowAddress: string;
+  sepoliaScanUrl: string;
+}
+
+export async function apiMintSubname(params: {
+  escrowAddress: string;
+  userWallet: string;
+  projectTitle: string;
+}): Promise<MintSubnameResponse> {
+  const res = await fetch(`${API_BASE}/projects/mint-subname`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(params),
+  });
+  return unwrap<MintSubnameResponse>(res);
 }
 
 export async function apiVerifyEvidence(params: {
