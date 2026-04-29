@@ -434,3 +434,56 @@ Single file upload completed - returning single result
 ⏳ Event not yet indexed (attempt 2/10) — waiting 3s...
 ✅ Tx confirmed: 0x86db09d89f...
 ✅ Released 0.05 OG to 0x77a503CEACAaCC3B8538e9E3DEC1485AdB16Ae9c
+
+===================== LOG 29th 00:33 ENS naming regestered and wrap tested. =====================
+
+# alexander@AlexandersMBP2 backend % node --env-file=.env scripts/register-construct-eth.mjs
+
+# Construct — Register construct.eth
+
+Server wallet (signer): 0xdf6cA46F65159658Ac52736CeBD806C16095B078
+MPC wallet (final owner): 0xFc49AFB213B4284D9Ab5c1175ACE87b65cf440ce
+Name to register: construct.eth
+Duration: 5 years
+
+Server wallet balance: 0.03 ETH
+Rent: 0.01562500000001745 ETH (paying 0.017187500000019195 with 10% pad)
+
+🔑 SECRET — save this in case the script crashes mid-flow:
+REDACTED
+
+Commitment: 0xaaadfa1203da8834cc09022725da61432b7ea3ca05ff355def5abda4c88502ec
+
+→ commit()...
+tx: 0xafd2d987ffaab4746493756f988279c797fd3961241f75ed32d5e86e979bdea7
+✅ confirmed
+
+⏳ Waiting 65s for min commitment age...
+1s remaining...  
+ done.
+
+→ register()...
+tx: 0x639b15faa0dd308fd60ce50b1dc148180d940960cee6c266e99439723e3bd54e
+✅ construct.eth registered, owned by server (unwrapped)
+
+→ setApprovalForAll(NameWrapper, true)...
+tx: 0xd03ac02c6c72bdc49964df9955c599fdcd0d2ba67cde52cd32743809b1250ed2
+✅ confirmed
+
+→ wrapETH2LD(label='construct', owner=MPC, fuses=CANNOT_UNWRAP)...
+tx: 0x7d1cab10164b817d10dfdd5f1b289555bc8880d597878ef5e1ded69218e99dea
+✅ wrapped + locked, NFT minted to MPC
+
+========================================
+RESULTS
+========================================
+Name: construct.eth
+Namehash: 0xa928fb464ab38cca42be101dfc290e4910c5d6bc5d904a454e9e198eb0856a08
+TokenId: 76513279526559438293681169021200286427019135183781895130539114173093294467592
+Owner: 0xFc49AFB213B4284D9Ab5c1175ACE87b65cf440ce
+Expected: 0xFc49AFB213B4284D9Ab5c1175ACE87b65cf440ce
+
+Wallet now has: 0.014310046078511213 ETH (spent 0.015689953921488787)
+
+🎉 SUCCESS — construct.eth is wrapped, locked (CANNOT_UNWRAP), owned by MPC.
+Verify visually: https://sepolia.app.ens.domains/construct.eth
