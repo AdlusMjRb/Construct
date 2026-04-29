@@ -13,7 +13,9 @@ export const config = {
   anthropicKey: process.env.ANTHROPIC_API_KEY || null,
   keeperHubAgentAddress: process.env.KEEPERHUB_AGENT_ADDRESS || null,
   keeperHubWebhookUrl: process.env.KEEPERHUB_WEBHOOK_URL || null,
+  keeperHubMintSubnameUrl: process.env.KEEPERHUB_MINT_SUBNAME_URL || null,
   keeperHubApiKey: process.env.KEEPERHUB_API_KEY || null,
+  sepoliaRpcUrl: process.env.SEPOLIA_RPC_URL,
   storage: {
     indexerRpc:
       process.env.ZG_STORAGE_INDEXER_RPC ||

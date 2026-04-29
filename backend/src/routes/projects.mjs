@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { generateMilestones } from "../agent/claude.mjs";
 import { uploadSpec } from "../storage/storage.mjs";
 import { config } from "../config.mjs";
+import { mintSubname, slugifyLabel } from "../keeperhub/ens.mjs";
 
 const router = Router();
 
@@ -58,6 +59,37 @@ router.post("/generate", async (req, res) => {
   } catch (err) {
     const status = err.status >= 500 ? 502 : 400;
     sendError(res, err, status);
+  }
+});
+
+router.post("/mint-subname", async (req, res) => {
+  try {
+    const { escrowAddress, userWallet, projectTitle } = req.body ?? {};
+
+    if (!ethers.isAddress(escrowAddress)) {
+      throw new Error("escrowAddress is not a valid address");
+    }
+    if (!ethers.isAddress(userWallet)) {
+      throw new Error("userWallet is not a valid address");
+    }
+    if (typeof projectTitle !== "string" || projectTitle.trim().length === 0) {
+      throw new Error("projectTitle is required");
+    }
+
+    const label = slugifyLabel(projectTitle);
+    const result = await mintSubname({
+      label,
+      ownerWallet: userWallet,
+    });
+
+    res.json({
+      ok: true,
+      ...result,
+      escrowAddress,
+      sepoliaScanUrl: `https://sepolia.app.ens.domains/${result.fullName}`,
+    });
+  } catch (err) {
+    sendError(res, err, err.message?.includes("KH") ? 502 : 400);
   }
 });
 
