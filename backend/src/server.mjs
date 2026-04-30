@@ -3,6 +3,7 @@ import cors from "cors";
 import { config } from "./config.mjs";
 import routes from "./routes/index.mjs";
 import "reflect-metadata";
+import handoverRouter from "./routes/handover.mjs";
 
 const app = express();
 
@@ -10,6 +11,7 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 app.use("/api", routes);
+app.use("/api/projects", handoverRouter);
 
 const server = app.listen(config.port, () => {
   console.log("─".repeat(60));

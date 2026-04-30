@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type {
   DeploymentData,
@@ -62,6 +63,12 @@ export interface Shutter3Props {
   translating: boolean;
   translatedMilestonesPresent: boolean;
   handleLanguageChange: (newLang: string) => void;
+
+  // Send / handover
+  sendingProject: boolean;
+  sendModalOpen: boolean;
+  setSendModalOpen: (open: boolean) => void;
+  handleSendProject: (recipientAddress: string) => void;
 }
 
 export const Shutter3Verify = ({
@@ -91,7 +98,13 @@ export const Shutter3Verify = ({
   translating,
   translatedMilestonesPresent,
   handleLanguageChange,
+  sendingProject,
+  sendModalOpen,
+  setSendModalOpen,
+  handleSendProject,
 }: Shutter3Props) => {
+  const [recipientAddress, setRecipientAddress] = useState("");
+
   return (
     <div
       style={{
@@ -182,6 +195,23 @@ export const Shutter3Verify = ({
                 ...
                 {deploymentData.agentAddress.slice(-4)}
               </span>
+            )}
+            {deploymentData.ensSubname && deploymentData.ensTokenId && (
+              <button
+                onClick={() => setSendModalOpen(true)}
+                disabled={sendingProject}
+                style={{
+                  ...chip,
+                  background: "#fef3c7",
+                  border: "1px solid #fcd34d",
+                  color: "#92400e",
+                  cursor: sendingProject ? "wait" : "pointer",
+                  fontWeight: 600,
+                }}
+                title="Transfer this project to another wallet"
+              >
+                🤝 Send Project
+              </button>
             )}
           </div>
         )}
@@ -1034,6 +1064,123 @@ export const Shutter3Verify = ({
           );
         })}
       </div>
+
+      {sendModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+          }}
+          onClick={() => !sendingProject && setSendModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              padding: "28px",
+              width: "440px",
+              maxWidth: "92vw",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                marginBottom: "8px",
+                fontSize: "18px",
+                fontWeight: 700,
+                color: P.text,
+              }}
+            >
+              Send Project to New Owner
+            </h3>
+            <p
+              style={{
+                margin: 0,
+                marginBottom: "20px",
+                fontSize: "13px",
+                color: P.textMid,
+                lineHeight: 1.6,
+              }}
+            >
+              This transfers the project's ENS NFT to the new owner on Sepolia.
+              They will be able to load this project, see the remaining
+              milestones, and continue the work. The original escrow on 0G stays
+              intact.
+            </p>
+
+            <label style={lblS}>Recipient Wallet Address</label>
+            <input
+              type="text"
+              value={recipientAddress}
+              onChange={(e) => setRecipientAddress(e.target.value)}
+              placeholder="0x..."
+              disabled={sendingProject}
+              style={{ ...inpC, marginBottom: "20px" }}
+              autoFocus
+            />
+
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                onClick={() => setSendModalOpen(false)}
+                disabled={sendingProject}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: "#f3f4f6",
+                  border: `1px solid ${P.cardBorder}`,
+                  borderRadius: "10px",
+                  color: P.textMid,
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  fontFamily: "'Space Grotesk', sans-serif",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSendProject(recipientAddress)}
+                disabled={sendingProject || !recipientAddress}
+                style={{
+                  flex: 2,
+                  padding: "12px",
+                  background: "#f59e0b",
+                  border: "none",
+                  borderRadius: "10px",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  cursor: sendingProject ? "wait" : "pointer",
+                  opacity: !recipientAddress ? 0.5 : 1,
+                  fontFamily: "'Space Grotesk', sans-serif",
+                }}
+              >
+                {sendingProject ? (
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <span className="spinner" /> Confirm in wallet...
+                  </span>
+                ) : (
+                  "Send Project"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

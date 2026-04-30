@@ -9,6 +9,9 @@ import {
   setTextRecord,
   readTextRecord,
 } from "../keeperhub/ens.mjs";
+import { syncEscrowToEns } from "../keeperhub/sync.mjs";
+import { registerSubname } from "../storage/subname-registry.mjs";
+
 const router = Router();
 
 function sendError(res, err, status = 400) {
@@ -85,6 +88,21 @@ router.post("/mint-subname", async (req, res) => {
       label,
       ownerWallet: userWallet,
     });
+
+    // Persist to local registry so by-owner lookups can find this project.
+    // Don't fail the whole mint response if the write hiccups — the user
+    // gets their subname regardless. Roadmap: real DB.
+    try {
+      await registerSubname({
+        subname: result.fullName,
+        tokenId: result.tokenId,
+        currentOwner: userWallet,
+        escrowAddress,
+      });
+      console.log(`   📒 registry: recorded ${result.fullName}`);
+    } catch (regErr) {
+      console.error(`   ⚠️  registry write failed: ${regErr.message}`);
+    }
 
     res.json({
       ok: true,
@@ -187,6 +205,38 @@ router.post("/set-records", async (req, res) => {
       total: records.length,
       records: results,
     });
+  } catch (err) {
+    sendError(res, err, err.message?.includes("KH") ? 502 : 400);
+  }
+});
+
+router.post("/sync-ens", async (req, res) => {
+  try {
+    const { contractAddress, subname } = req.body ?? {};
+
+    if (!ethers.isAddress(contractAddress)) {
+      throw new Error("contractAddress is not a valid address");
+    }
+    if (typeof subname !== "string" || !subname.endsWith(".construct.eth")) {
+      throw new Error("subname must be a *.construct.eth name");
+    }
+
+    console.log(`   🌐 sync-ens (manual): ${subname} ↔ ${contractAddress}`);
+
+    const result = await syncEscrowToEns({ subname, contractAddress });
+
+    const failedCount = result.errors.length;
+    if (
+      failedCount > 0 &&
+      result.synced.length === 0 &&
+      result.skipped.length === 0
+    ) {
+      throw new Error(
+        `All ENS sync writes failed — check KH connectivity. First error: ${result.errors[0]?.error}`,
+      );
+    }
+
+    res.json({ ok: true, ...result });
   } catch (err) {
     sendError(res, err, err.message?.includes("KH") ? 502 : 400);
   }

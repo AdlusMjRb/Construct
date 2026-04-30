@@ -8,6 +8,7 @@ import {
   readEscrowState,
 } from "../keeperhub/blockchain.mjs";
 import { config } from "../config.mjs";
+import { syncEscrowToEns } from "../keeperhub/sync.mjs";
 
 const router = Router();
 
@@ -276,10 +277,29 @@ router.post("/verify", upload.array("images", 5), async (req, res) => {
         result.payee = release.payee;
         result.agentGasRefunded = release.agentGasRefunded;
         result.chainScanUrl = release.chainScanUrl;
+
+        // Cross-chain bookkeeping. Fire-and-forget — the user-facing result is
+        // the 0G release; Sepolia ENS sync runs ~80s and shouldn't block the
+        // verify response. Errors are logged; the frontend can retry via
+        // /api/projects/sync-ens if the records look stale.
+        const subname = req.body.subname ?? null;
+        if (subname) {
+          console.log(`   🌐 ENS sync: triggering for ${subname}...`);
+          syncEscrowToEns({ subname, contractAddress })
+            .then((sync) => {
+              console.log(
+                `   🌐 ENS sync done: ${sync.synced.length} written, ${sync.skipped.length} skipped, ${sync.errors.length} failed`,
+              );
+            })
+            .catch((err) => {
+              console.error(`   ❌ ENS sync failed: ${err.message}`);
+            });
+          result.ensSyncTriggered = true;
+        } else {
+          console.log("   ℹ️  No subname in request — skipping ENS sync");
+          result.ensSyncTriggered = false;
+        }
       } catch (releaseErr) {
-        // Release failed but verdict stands. Surface to frontend so it can
-        // fall back to the wallet-signed manual path. Don't 500 — the
-        // verification itself succeeded.
         console.error("   ❌ Release failed:", releaseErr.message);
         result.released = false;
         result.releaseError = releaseErr.message;
@@ -289,8 +309,6 @@ router.post("/verify", upload.array("images", 5), async (req, res) => {
       result.releaseError =
         "contractAddress + milestoneId required for autonomous release";
     } else {
-      // ESCALATE — frontend shows the orange Approve & Release button,
-      // user signs manually with their connected wallet.
       result.released = false;
       result.message =
         "Escalated to human review. Project owner can approve manually.";

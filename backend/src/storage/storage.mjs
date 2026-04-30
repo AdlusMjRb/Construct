@@ -78,3 +78,43 @@ export async function uploadSpec(milestoneData, signer, retries = 2) {
     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
   }
 }
+
+/**
+ * Fetch a spec back from 0G Storage by its root hash.
+ *
+ * Used by the inheritance/handover flow to recover the rich milestone
+ * data (descriptions, acceptance_criteria) that lives off-chain.
+ *
+ * The Indexer.download() signature varies slightly across SDK versions —
+ * the v1.2.1 form takes (rootHash, outputPath, withProof). We download
+ * to a temp file, read it, then clean up.
+ */
+export async function downloadSpec(rootHash) {
+  if (!rootHash || typeof rootHash !== "string") {
+    throw new Error("rootHash must be a non-empty string");
+  }
+
+  const tempFile = path.join(
+    config.storage.tempDir,
+    `download-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`,
+  );
+
+  try {
+    const indexer = new Indexer(config.storage.indexerRpc);
+    const downloadErr = await indexer.download(rootHash, tempFile, false);
+    if (downloadErr) {
+      throw new Error(`0G Storage download error: ${downloadErr}`);
+    }
+
+    const raw = fs.readFileSync(tempFile, "utf8");
+    return JSON.parse(raw);
+  } finally {
+    if (fs.existsSync(tempFile)) {
+      try {
+        fs.unlinkSync(tempFile);
+      } catch (_) {
+        // non-fatal
+      }
+    }
+  }
+}

@@ -179,6 +179,150 @@ export async function apiSetRecords(params: {
   return unwrap<SetRecordsResponse>(res);
 }
 
+export interface SyncEnsResponse {
+  subname: string;
+  contractAddress: string;
+  completedCount: number;
+  isFullyComplete: boolean;
+  synced: Array<{
+    key: string;
+    value: string;
+    previous: string | null;
+    executionId?: string;
+  }>;
+  skipped: Array<{ key: string; value: string }>;
+  errors: Array<{ key: string; value: string; error: string }>;
+}
+
+export async function apiSyncEns(params: {
+  contractAddress: string;
+  subname: string;
+}): Promise<SyncEnsResponse> {
+  const res = await fetch(`${API_BASE}/projects/sync-ens`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(params),
+  });
+  return unwrap<SyncEnsResponse>(res);
+}
+
+// ─── Handover / continuation loop ────────────────────────────────
+
+export interface OwnedProject {
+  subname: string;
+  tokenId: string;
+  currentOwner: string;
+  escrowAddress: string;
+  mintedAt: string;
+  updatedAt: string;
+}
+
+export interface GetProjectsByOwnerResponse {
+  wallet: string;
+  owned: OwnedProject[];
+}
+
+export async function apiGetProjectsByOwner(
+  wallet: string,
+): Promise<GetProjectsByOwnerResponse> {
+  const res = await fetch(
+    `${API_BASE}/projects/by-owner/${encodeURIComponent(wallet)}`,
+  );
+  return unwrap<GetProjectsByOwnerResponse>(res);
+}
+
+export interface LoadedAcceptanceCriterion {
+  description: string;
+  evidence_type: "photo" | "receipt" | "document" | "video" | "screenshot";
+  evidence_instruction: string;
+}
+
+export interface LoadedRemainingMilestone {
+  name: string;
+  percentage: number;
+  amountEth: string;
+  description: string;
+  acceptance_criteria: LoadedAcceptanceCriterion[];
+  verification_confidence: "high" | "medium" | "low";
+}
+
+export interface LoadProjectResponse {
+  inheritedFrom: {
+    subname: string;
+    oldEscrowAddress: string;
+    oldEscrowChain: string;
+    oldStatus: string;
+    oldPayee: string;
+    oldStorageHash: string;
+  };
+  project: {
+    title: string;
+    summary: string;
+    canonical_language: string;
+    suggested_payee: string;
+  };
+  remainingMilestones: LoadedRemainingMilestone[];
+  completedCount: number;
+  totalCount: number;
+}
+
+export async function apiLoadProject(
+  subname: string,
+): Promise<LoadProjectResponse> {
+  const res = await fetch(
+    `${API_BASE}/projects/load/${encodeURIComponent(subname)}`,
+  );
+  return unwrap<LoadProjectResponse>(res);
+}
+
+export interface RepointResponse {
+  subname: string;
+  newEscrowAddress: string;
+  records: Array<{
+    key: string;
+    status: "confirmed" | "failed";
+    executionId?: string | null;
+    error?: string;
+  }>;
+}
+
+export async function apiRepointSubname(params: {
+  subname: string;
+  newEscrowAddress: string;
+  newPayee: string;
+  newMilestoneCount: number;
+}): Promise<RepointResponse> {
+  const res = await fetch(`${API_BASE}/projects/repoint`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(params),
+  });
+  return unwrap<RepointResponse>(res);
+}
+
+export interface HandoverResponse {
+  subname: string;
+  newOwner: string;
+  records: Array<{
+    key: string;
+    status: "confirmed" | "failed";
+    executionId?: string;
+    error?: string;
+  }>;
+}
+
+export async function apiHandoverProject(params: {
+  subname: string;
+  newOwner: string;
+}): Promise<HandoverResponse> {
+  const res = await fetch(`${API_BASE}/projects/handover`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(params),
+  });
+  return unwrap<HandoverResponse>(res);
+}
+
 export async function apiVerifyEvidence(params: {
   contractAddress: string;
   milestoneId: number;
@@ -186,9 +330,11 @@ export async function apiVerifyEvidence(params: {
   acceptance_criteria: AcceptanceCriterion[];
   verification_confidence: string;
   files: File[];
+  subname?: string;
 }): Promise<VerificationResult> {
   const formData = new FormData();
   formData.append("contractAddress", params.contractAddress);
+  if (params.subname) formData.append("subname", params.subname);
   formData.append("milestoneId", params.milestoneId.toString());
   formData.append("evidence", params.evidence);
   formData.append(

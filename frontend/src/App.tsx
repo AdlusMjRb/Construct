@@ -7,20 +7,25 @@ import {
   useSwitchChain,
   useWalletClient,
 } from "wagmi";
-import { parseEther } from "viem";
 import { sepolia } from "./lib/chains";
-
+import { parseEther, isAddress } from "viem";
 import {
   apiGenerateMilestones,
   apiGetEscrow,
+  apiGetProjectsByOwner,
+  apiHandoverProject,
+  apiLoadProject,
   apiMintSubname,
   apiPrepareProject,
+  apiRepointSubname,
   apiSetRecords,
+  apiSyncEns,
   apiTranslateSpec,
   apiTranslateVerification,
   apiVerifyEvidence,
 } from "./lib/api";
 import { P } from "./lib/tokens";
+import type { OwnedProject } from "./lib/api";
 import type {
   AcceptanceCriterion,
   DeploymentData,
@@ -70,6 +75,25 @@ const COMPLETE_MILESTONE_ABI = [
   {
     inputs: [{ internalType: "uint256", name: "_id", type: "uint256" }],
     name: "completeMilestone",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+] as const;
+
+const NAME_WRAPPER_ADDRESS =
+  "0x0635513f179D50A207757E05759CbD106d7dFcE8" as const;
+
+const NAME_WRAPPER_TRANSFER_ABI = [
+  {
+    inputs: [
+      { internalType: "address", name: "from", type: "address" },
+      { internalType: "address", name: "to", type: "address" },
+      { internalType: "uint256", name: "id", type: "uint256" },
+      { internalType: "uint256", name: "amount", type: "uint256" },
+      { internalType: "bytes", name: "data", type: "bytes" },
+    ],
+    name: "safeTransferFrom",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
@@ -200,6 +224,14 @@ export default function App() {
   const [translatedVerificationResults, setTranslatedVerificationResults] =
     useState<Record<string, VerificationResult> | null>(null);
   const [translating, setTranslating] = useState(false);
+  const [sendingProject, setSendingProject] = useState(false);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [inheritedSubname, setInheritedSubname] = useState<string | null>(null);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [ownedProjects, setOwnedProjects] = useState<OwnedProject[] | null>(
+    null,
+  );
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
 
   // ─── Derived state ─────────────────────────────────────────────
   const APPROVING_MPC_MESSAGES = [
@@ -371,26 +403,58 @@ export default function App() {
       }
       const contractAddress = deployReceipt.contractAddress;
 
-      // Cross-chain step: mint the project's ENS identity on Sepolia.
-      setLoadingPhase("minting-subname");
+      // Cross-chain step. Two branches:
+      //   - Fresh project: mint a brand new ENS subname for this escrow.
+      //   - Inherited project: SKIP mint. The recipient already owns the
+      //     subname (NFT was transferred in handover), and the deploy
+      //     below will repoint it at the new escrow after resolver
+      //     approval. Same NFT, new escrow — that's the loop.
       let ensData: Awaited<ReturnType<typeof apiMintSubname>> | null = null;
-      try {
-        ensData = await apiMintSubname({
-          escrowAddress: contractAddress,
-          userWallet: userAddress,
-          projectTitle,
-        });
-      } catch (mintErr) {
-        console.error("Subname mint failed (escrow still deployed):", mintErr);
-        setErrorMessage(
-          "Project escrow deployed successfully, but ENS identity could not be minted. You can retry from the project view.",
+      if (inheritedSubname) {
+        console.log(
+          `Inherited project — skipping mint, will repoint ${inheritedSubname}`,
         );
+        // Synthesise a minimal ensData object so the rest of the deploy
+        // flow (resolver approval, deploymentData wiring) doesn't have
+        // to special-case inheritance. Token id and full name are what
+        // matter for downstream display + send-project capability.
+        // Construct doesn't have the tokenId client-side; the backend will
+        // verify it against ownership when /repoint runs. For UI state
+        // we leave tokenId as the subname for now and pull a real one
+        // from the registry on next load if needed.
+        ensData = {
+          label: inheritedSubname.replace(".construct.eth", ""),
+          fullName: inheritedSubname,
+          tokenId: "",
+          ownerWallet: userAddress,
+          confirmedAt: new Date().toISOString(),
+          elapsedMs: 0,
+          escrowAddress: contractAddress,
+          sepoliaScanUrl: `https://sepolia.app.ens.domains/${inheritedSubname}`,
+        };
+      } else {
+        setLoadingPhase("minting-subname");
+        try {
+          ensData = await apiMintSubname({
+            escrowAddress: contractAddress,
+            userWallet: userAddress,
+            projectTitle,
+          });
+        } catch (mintErr) {
+          console.error(
+            "Subname mint failed (escrow still deployed):",
+            mintErr,
+          );
+          setErrorMessage(
+            "Project escrow deployed successfully, but ENS identity could not be minted. You can retry from the project view.",
+          );
+        }
       }
 
       // Approval step: grant MPC permission to write text records on the
       // PublicResolver. Resolver approval is per-(owner, operator), not
       // per-name, so this is a one-time grant covering all current and
-      // future projects this user creates. We use localStorage to skip
+      // future projects this user creates. Construct uses localStorage to skip
       // re-prompting users who've already approved (the resolver doesn't
       // expose a cheap on-chain readback).
       let resolverAuthorised = false;
@@ -428,19 +492,36 @@ export default function App() {
         }
       }
 
-      // Fire-and-forget: write initial text records to bridge Sepolia identity
-      // to 0G escrow state. DON'T await, user moves to Shutter 3
-      // immediately while records confirm in the background (~15-30s).
-      // Records can be retried later if this fails; escrow + ENS still work.
+      // Records writes, fresh mint vs inherited repoint take different
+      // backend endpoints. Both fire-and-forget so the user reaches
+      // Shutter 3 immediately while Sepolia confirms in the background.
       if (ensData && resolverAuthorised) {
-        apiSetRecords({
-          subname: ensData.fullName,
-          escrowAddress: contractAddress,
-          payeeAddress: devWallet,
-          milestoneCount: milestones.length,
-        }).catch((err) => {
-          console.error("set-records failed (non-fatal):", err);
-        });
+        if (inheritedSubname) {
+          // Repoint: same subname now points at the new escrow. Also
+          // flips status from handed_over → in_progress and clears the
+          // handed_over_to record.
+          apiRepointSubname({
+            subname: inheritedSubname,
+            newEscrowAddress: contractAddress,
+            newPayee: devWallet,
+            newMilestoneCount: milestones.length,
+          })
+            .then(() => {
+              console.log(`Repointed ${inheritedSubname} → ${contractAddress}`);
+            })
+            .catch((err) => {
+              console.error("repoint failed (non-fatal):", err);
+            });
+        } else {
+          apiSetRecords({
+            subname: ensData.fullName,
+            escrowAddress: contractAddress,
+            payeeAddress: devWallet,
+            milestoneCount: milestones.length,
+          }).catch((err) => {
+            console.error("set-records failed (non-fatal):", err);
+          });
+        }
       }
 
       setDeploymentData({
@@ -461,6 +542,7 @@ export default function App() {
         setFurthestShutter((f) => Math.max(f, 2));
         setIsTransitioning(false);
         setLoadingPhase(null);
+        setInheritedSubname(null);
       }, 400);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Deployment failed";
@@ -562,6 +644,7 @@ export default function App() {
         acceptance_criteria: m.acceptance_criteria,
         verification_confidence: m.verification_confidence,
         files: files.filter((f) => f.type.startsWith("image/")),
+        subname: deploymentData.ensSubname ?? undefined,
       });
       setVerificationResults((p) => ({ ...p, [milestoneId]: r }));
       // If the user is viewing in a non-canonical language, translate the
@@ -623,11 +706,249 @@ export default function App() {
       if (displayLang !== canonicalLang) {
         void translateAndStoreResult(milestoneId, updatedResult, displayLang);
       }
+
+      // Cross-chain sync: ENS records on Sepolia don't auto-update when the
+      // owner bypasses the agent path. Fire from backend so the agent owns
+      // ENS bookkeeping regardless of who triggered the release. Fire-and-
+      // forget — the user's release is already confirmed on 0G, this is
+      // background bookkeeping (~80s on Sepolia).
+      if (deploymentData.ensSubname) {
+        apiSyncEns({
+          contractAddress: deploymentData.contractAddress,
+          subname: deploymentData.ensSubname,
+        }).catch((err) => {
+          console.error("ENS sync after manual release failed:", err);
+        });
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Manual release failed";
       setErrorMessage(msg.includes("rejected") ? "Transaction rejected." : msg);
     }
     setReleasingMilestone(null);
+  };
+
+  /**
+   * Send the project NFT to a new owner on Sepolia.
+   *
+   * Order matters here:
+   *   1. Write handover records to ENS (status=handed_over, handed_over_to).
+   *      The MPC writes via the SENDER's existing setApprovalForAll. Once
+   *      the NFT moves, that approval is no longer valid for these writes
+   *      (resolver re-checks ownerOf on every setter and the new owner
+   *      hasn't granted approval yet).
+   *   2. Then sign the NFT transfer.
+   *
+   * If the records fail, we abort the transfer — the recipient should
+   * never receive a project whose audit trail wasn't sealed first.
+   */
+  const handleSendProject = async (recipientAddress: string) => {
+    if (!deploymentData?.ensSubname || !deploymentData?.ensTokenId) {
+      setErrorMessage(
+        "Project missing ENS identity — handover requires an ENS subname.",
+      );
+      return;
+    }
+    if (!walletClient || !userAddress) {
+      setErrorMessage("Connect your wallet to send the project.");
+      return;
+    }
+    if (!isAddress(recipientAddress)) {
+      setErrorMessage("Recipient address is not valid.");
+      return;
+    }
+    if (recipientAddress.toLowerCase() === userAddress.toLowerCase()) {
+      setErrorMessage("Recipient must be a different wallet.");
+      return;
+    }
+
+    setSendingProject(true);
+    setErrorMessage(null);
+
+    try {
+      // Step 1: seal the audit trail BEFORE the NFT moves. While the
+      // sender still owns the subname, the MPC's resolver approval grants
+      // it write access via the resolver's ownerOf check. Once the NFT
+      // transfers, those writes would revert until the new owner grants
+      // their own approval — too late to mark THIS old escrow as
+      // "handed_over". So we do the records first, transfer second.
+      console.log("Sealing handover records on ENS...");
+      const handover = await apiHandoverProject({
+        subname: deploymentData.ensSubname,
+        newOwner: recipientAddress,
+      });
+
+      const failedRecords = handover.records.filter(
+        (r) => r.status === "failed",
+      );
+      if (failedRecords.length > 0) {
+        throw new Error(
+          `ENS handover records failed: ${failedRecords.map((r) => r.key).join(", ")}. NFT transfer aborted.`,
+        );
+      }
+      console.log("Handover records confirmed:", handover.records);
+
+      // Step 2: NFT transfer on Sepolia. Now safe — audit trail says
+      // "handed over to <recipient>" before the recipient's wallet ever
+      // touches the subname.
+      await switchChainAsync({ chainId: sepolia.id });
+
+      const txHash = await walletClient.writeContract({
+        chain: sepolia,
+        address: NAME_WRAPPER_ADDRESS,
+        abi: NAME_WRAPPER_TRANSFER_ABI,
+        functionName: "safeTransferFrom",
+        args: [
+          userAddress as `0x${string}`,
+          recipientAddress as `0x${string}`,
+          BigInt(deploymentData.ensTokenId),
+          1n,
+          "0x",
+        ],
+      });
+
+      await sepoliaPublicClient.waitForTransactionReceipt({
+        hash: txHash,
+        timeout: 120_000,
+        pollingInterval: 4_000,
+      });
+
+      console.log(
+        `Project NFT transferred to ${recipientAddress} on Sepolia: ${txHash}`,
+      );
+
+      setSendModalOpen(false);
+      setErrorMessage(null);
+      alert(
+        `Project sent to ${recipientAddress}. The recipient can now load the project from their wallet on Shutter 1.`,
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Transfer failed";
+      setErrorMessage(msg.includes("rejected") ? "Transaction rejected." : msg);
+    }
+
+    setSendingProject(false);
+  };
+
+  /**
+   * Entry point on Shutter 1 — "Load Existing Project".
+   *
+   * Queries the backend for any subnames the connected wallet currently
+   * owns. Behaviour:
+   *   - 0 results → show error
+   *   - 1 result  → auto-load it (smoothest demo path)
+   *   - 2+ results → open picker modal, user chooses one
+   */
+  const handleLoadProjectsClick = async () => {
+    if (!isConnected || !userAddress) {
+      setErrorMessage("Connect your wallet to load existing projects.");
+      return;
+    }
+    setLoadingProjects(true);
+    setErrorMessage(null);
+    try {
+      const result = await apiGetProjectsByOwner(userAddress);
+      if (result.owned.length === 0) {
+        setErrorMessage(
+          "No projects found in this wallet. Start a new one above.",
+        );
+        setLoadingProjects(false);
+        return;
+      }
+      if (result.owned.length === 1) {
+        // Auto-load — no picker needed.
+        await loadInheritedProject(result.owned[0].subname);
+        return;
+      }
+      // 2+ owned — show picker, user chooses.
+      setOwnedProjects(result.owned);
+      setProjectPickerOpen(true);
+    } catch (e: unknown) {
+      setErrorMessage(
+        e instanceof Error ? e.message : "Failed to load projects",
+      );
+    }
+    setLoadingProjects(false);
+  };
+
+  /**
+   * Loads the chosen subname's remaining milestones into Shutter 2 state.
+   *
+   * Reconstructs the Milestone[] array from the backend response — backend
+   * gives us name, %, amountEth, plus the rich spec fields (description,
+   * acceptance_criteria) recovered from 0G Storage. Each milestone gets a
+   * fresh client-side id so React keys don't collide if the user has
+   * multiple projects.
+   *
+   * Pre-fills price from the OLD escrow's amount per milestone. The user
+   * can adjust before locking, Shutter 2 already supports per-milestone
+   * price editing.
+   */
+  const loadInheritedProject = async (subname: string) => {
+    setLoadingProjects(true);
+    setErrorMessage(null);
+    try {
+      const data = await apiLoadProject(subname);
+
+      if (data.remainingMilestones.length === 0) {
+        throw new Error(
+          "All milestones on this project are already complete — nothing to continue.",
+        );
+      }
+
+      // Rebuild the milestones array from the inherited spec. Mark them
+      // unlocked so the recipient can adjust pricing before deploy.
+      const inherited: Milestone[] = data.remainingMilestones.map((m) => ({
+        id: crypto.randomUUID(),
+        header: m.name,
+        description: m.description,
+        evidenceRequired: m.acceptance_criteria
+          .map((c) => `[${c.evidence_type}] ${c.evidence_instruction}`)
+          .join(" | "),
+        acceptance_criteria: m.acceptance_criteria,
+        verification_confidence: m.verification_confidence,
+        price: m.amountEth, // inherited price; user can edit
+        percentage: m.percentage,
+        locked: false,
+      }));
+
+      // Hydrate the form fields so Shutter 2's deploy summary shows the
+      // right project name, the suggested builder, and a sensible total.
+      const inheritedTotal = inherited.reduce(
+        (sum, m) => sum + parseFloat(m.price || "0"),
+        0,
+      );
+
+      setProjectTitle(data.project.title);
+      setProjectDescription(data.project.summary);
+      setTotalPool(inheritedTotal.toString());
+      setDevWallet(data.project.suggested_payee);
+      setMilestones(inherited);
+      setCanonicalLang(data.project.canonical_language);
+      setDisplayLang(data.project.canonical_language);
+      setTranslatedMilestones(null);
+      setTranslatedVerificationResults(null);
+
+      // Mark this as an inherited project, deploy flow on Shutter 2 will
+      // skip the mint step and call /repoint instead.
+      setInheritedSubname(subname);
+
+      // Reset deployment-side state so the new escrow's data lands cleanly.
+      setDeploymentData(null);
+      setEvidenceFiles({});
+      setEvidenceText({});
+      setVerificationResults({});
+
+      // Jump to Shutter 2 (review).
+      setProjectPickerOpen(false);
+      setOwnedProjects(null);
+      setActiveShutter(1);
+      setFurthestShutter((f) => Math.max(f, 1));
+    } catch (e: unknown) {
+      setErrorMessage(
+        e instanceof Error ? e.message : "Failed to load project",
+      );
+    }
+    setLoadingProjects(false);
   };
 
   // ─── Handlers: language switching ──────────────────────────────
@@ -878,7 +1199,120 @@ export default function App() {
                         : "Verifying evidence..."}
           </div>
         )}
+      {projectPickerOpen && ownedProjects && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+          }}
+          onClick={() => !loadingProjects && setProjectPickerOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              padding: "28px",
+              width: "520px",
+              maxWidth: "92vw",
+              maxHeight: "80vh",
+              overflowY: "auto",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                marginBottom: "8px",
+                fontSize: "18px",
+                fontWeight: 700,
+                color: P.text,
+              }}
+            >
+              Choose Project to Load
+            </h3>
+            <p
+              style={{
+                margin: 0,
+                marginBottom: "20px",
+                fontSize: "13px",
+                color: P.textMid,
+                lineHeight: 1.6,
+              }}
+            >
+              Your wallet owns {ownedProjects.length} projects. Select one to
+              continue.
+            </p>
 
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+            >
+              {ownedProjects.map((p) => (
+                <button
+                  key={p.subname}
+                  onClick={() => loadInheritedProject(p.subname)}
+                  disabled={loadingProjects}
+                  style={{
+                    textAlign: "left",
+                    padding: "14px 16px",
+                    background: "#f9fafb",
+                    border: `1px solid ${P.cardBorder}`,
+                    borderRadius: "10px",
+                    cursor: loadingProjects ? "wait" : "pointer",
+                    fontFamily: "'Space Grotesk', sans-serif",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      color: P.text,
+                      marginBottom: "4px",
+                    }}
+                  >
+                    {p.subname}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: P.textDim,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  >
+                    Last escrow: {p.escrowAddress.slice(0, 10)}...
+                    {p.escrowAddress.slice(-8)}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setProjectPickerOpen(false)}
+              disabled={loadingProjects}
+              style={{
+                marginTop: "16px",
+                width: "100%",
+                padding: "12px",
+                background: "#f3f4f6",
+                border: `1px solid ${P.cardBorder}`,
+                borderRadius: "10px",
+                color: P.textMid,
+                fontWeight: 600,
+                fontSize: "13px",
+                cursor: "pointer",
+                fontFamily: "'Space Grotesk', sans-serif",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {[0, 1, 2].map((index) => {
         const isOpen = isShutterOpen(index);
         const isPast = index <= furthestShutter;
@@ -980,6 +1414,9 @@ export default function App() {
                 isActive={activeShutter === 0}
                 loadingPhase={loadingPhase}
                 onGenerate={handleGenerate}
+                isConnected={isConnected}
+                loadingProjects={loadingProjects}
+                onLoadExistingClick={handleLoadProjectsClick}
               />
             )}
 
@@ -1030,6 +1467,10 @@ export default function App() {
                 translating={translating}
                 translatedMilestonesPresent={!!translatedMilestones}
                 handleLanguageChange={handleLanguageChange}
+                sendingProject={sendingProject}
+                sendModalOpen={sendModalOpen}
+                setSendModalOpen={setSendModalOpen}
+                handleSendProject={handleSendProject}
               />
             )}
           </div>

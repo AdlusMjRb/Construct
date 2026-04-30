@@ -127,9 +127,56 @@ Symptoms in our case: webhook executions succeeded but emitted `Contract call fa
 
 **Impact:** 🟠 ~20 minutes of mistakenly debugging the contract call before realising the RPC was the issue.
 
+--
+
+### 1.7 Sequential MPC signing requests fail under nonce-lock contention 🟠
+
+**Repro:**
+
+1. Create or use an existing webhook-triggered Write Contract workflow on Sepolia.
+2. From a backend, fire 6 webhooks at the same workflow within ~50ms of each other (e.g. `Promise.allSettled(records.map(r => fetch(webhookUrl, ...)))`).
+3. The first webhook completes successfully and writes to chain.
+4. The remaining 5 fail with: `Failed to acquire nonce lock for 0x<wallet>:11155111 after 50 attempts`
+
+**Diagnosis:**
+
+KH serialises signing requests per-(MPC wallet, chain) via a nonce lock — correct behaviour, since Turnkey can only sign one tx at a time per key and each tx needs a fresh sequential nonce. The lock has a 50-retry ceiling. When the first tx takes its full ~12-15s to confirm on Sepolia, the other 5 webhooks burn through their retries and abort.
+
+This is correct from a correctness standpoint — parallel sends from the same wallet would cause nonce collisions on-chain. But the 50-retry ceiling is too low for any chain with ~12s blocks: 50 retries × however-many-ms-between-retries falls short of one tx's full confirmation time, so honest sequential workflows still hit the ceiling.
+
+**Workaround:**
+
+Move client-side from parallel to sequential. The client must wait for each webhook's transaction to confirm on-chain (not just KH's webhook acceptance, which returns in ~200ms regardless of whether signing succeeded) before firing the next.
+
+In our code that meant changing `setTextRecord` to poll the resolver for the written value before resolving:
+
+```js
+// After firing the KH webhook, poll the resolver until the value lands
+const startedAt = Date.now();
+while (Date.now() - startedAt < 90_000) {
+  await new Promise((r) => setTimeout(r, 4_000));
+  const onchain = await resolver.text(node, key);
+  if (onchain === value) return { ...result, status: "confirmed" };
+}
+throw new Error(`Not confirmed within 90s`);
+```
+
+…and the calling code went from `Promise.allSettled` to a sequential `for...of` loop. 6 records × ~12s/record = ~75s total. Slower than parallel would be, but it actually works.
+
+**Suggestion:**
+
+Two options would help:
+
+1. **Raise the retry ceiling** to something that comfortably exceeds two-tx confirmation windows on the slowest supported chain (e.g. 600 retries at 1s = 10 minutes of patience). Keeps the lock semantics, removes the false-failure mode.
+2. **Document the constraint clearly** — "do not fire more than one webhook to the same MPC wallet on the same chain in flight." Right now a developer hits it as a hard error mid-integration and has to reverse-engineer what's happening.
+
+Option 2 alone would have saved us ~30 minutes today. Option 1 would let teams keep the parallel pattern for cases where they do want concurrent execution (e.g. one MPC wallet driving txs across multiple chains in parallel — different nonces, different locks, no actual conflict).
+
+**Impact:** 🟠 ~45 minutes. Failure mode is loud and clear once you read the error, but the architectural implication ("KH cannot accept parallel webhooks from one wallet+chain pair") isn't surfaced anywhere in docs, so the natural code shape on the client (`Promise.allSettled` for fire-and-forget) is the failure mode you stumble into first.
+
 ---
 
-### 1.7 Variable picker only opens on `@`, not `{` 🟡
+### 1.8 Variable picker only opens on `@`, not `{` 🟡
 
 Templates use `{{...}}` syntax (per §1.2), so typing `{` is the intuitive way to invoke the variable autocomplete. It doesn't. Only `@` does, with no on-field hint that this is the case.
 
@@ -245,6 +292,8 @@ Verified by inspecting Turnkey's signed-transaction history: a successful Sepoli
 Pre-flight gate in our backend that reads Sepolia base fee from a separate provider and refuses to fire the KH webhook if base fee < 0.1 gwei. Surfaces a clear error in ~200ms instead of waiting through the polling timeout.
 
 **Impact:** 🔴 Currently blocking all our Sepolia operations during quiet network periods. No way to unstick from KH side as a self-hoster — have to wait for organic Sepolia activity to bump base fee. Will hit any team using KH on a low-base-fee testnet.
+
+**Status:** Patched locally by editing `lib/web3/gas-strategy.ts` and lowering Sepolia's `minPriorityFeeGwei` from `0.1` to `0.000001`. End-to-end ENS flow now works against quiet Sepolia. The patch is small enough to upstream cleanly — happy to PR if useful.
 
 ---
 
