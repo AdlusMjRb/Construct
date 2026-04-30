@@ -13,8 +13,6 @@
 
 A funder writes a project description in any language. An agent breaks it into milestones with machine-verifiable acceptance criteria. Money locks in escrow on 0G. The project is minted as an ENS subname on Sepolia. A builder uploads evidence. A four-layer Trust Stack checks the evidence is real. Claude Vision checks the evidence matches the criteria. An MPC wallet — whose key doesn't fully exist on any server — releases payment on 0G and updates the project state on Sepolia in the same flow. If something looks wrong, it escalates. **If the company building it goes bust, the project transfers as an NFT and the new wallet inherits the work.**
 
-Construct stops money being stolen _before_ it's paid out — and keeps stopping after the original team is gone.
-
 ---
 
 ## The pipeline
@@ -33,9 +31,9 @@ If a builder folds mid-project, a sixth flow takes over: **the funder transfers 
 
 ---
 
-## Why we're different
+## Why Construct is different
 
-Three problems every other autonomous-payment project hand-waves. Three answers we actually built.
+Three problems every other autonomous-payment project hand-waves. Three answers I actually built.
 
 ### 🧠 Planning
 
@@ -50,7 +48,7 @@ Six languages live: English, Ukrainian, Arabic, Spanish, French, Swahili.
 | Layer                          | Catches                                                        | Misses                                                                |
 | ------------------------------ | -------------------------------------------------------------- | --------------------------------------------------------------------- |
 | **EXIF** (`exifr`)             | Screenshots, fully AI-generated images, editing fingerprints   | GPS strips from share sheets, EXIF preserved by some AI editing tools |
-| **C2PA** (`@trustnxt/c2pa-ts`) | Any post-capture modification if device signed the original    | ~99.9% of current images have no manifest — adoption is early         |
+| **C2PA** (`@trustnxt/c2pa-ts`) | Any post-capture modification if device signed the original    | ~99.9% of current images have no manifest, adoption is early          |
 | **Reality Defender**           | Fully AI-generated images (~93% confidence on test fakes)      | Localised AI edits on real photographs                                |
 | **Pricing Oracle** (Claude)    | Price inflation, material substitution, implausible quantities | Prices within normal variation bands                                  |
 
@@ -200,11 +198,11 @@ construct/
 
 ## Prize-track submissions
 
-**0G Autonomous Agents ($15k).** Construct runs the full AI-to-payment pipeline on 0G. Milestones stored on 0G Storage, escrow contracts on 0G Chain, verification triggering release transactions on 0G. The only network in the settlement layer.
+**0G Autonomous Agents.** Construct runs the full AI-to-payment pipeline on 0G. Milestones stored on 0G Storage, escrow contracts on 0G Chain, verification triggering release transactions on 0G. The only network in the settlement layer.
 
-**KeeperHub ($5k).** An autonomous AI agent executing on-chain payments without anyone holding a custody key. The MPC wallet signs across two chains from a single identity. Self-hosted to add 0G Galileo (the hosted app doesn't yet support 0G); detailed feedback to the KeeperHub team in [`docs/KEEPERHUB_FEEDBACK.md`](docs/KEEPERHUB_FEEDBACK.md).
+**KeeperHub.** An autonomous AI agent executing on-chain payments without anyone holding a custody key. The MPC wallet signs across two chains from a single identity. Self-hosted to add 0G Galileo (the hosted app didn't support at time of build); detailed feedback to the KeeperHub team in [`docs/KEEPERHUB_FEEDBACK.md`](docs/KEEPERHUB_FEEDBACK.md).
 
-**ENS.** Each project is a wrapped ENS subname under `construct.eth`. Text records on the resolver bridge Sepolia identity to 0G escrow state. Transferring the NFT transfers the project — and the same NFT can be repointed at a new escrow when continuity is needed. ENS as a project's spine, not a vanity address.
+**ENS.** Each project is a wrapped ENS subname under `construct.eth`. Text records on the resolver bridge Sepolia identity to 0G escrow state. Transferring the NFT transfers the project, and the same NFT can be repointed at a new escrow when continuity is needed. ENS as a project's spine, not a vanity address.
 
 ---
 
@@ -214,17 +212,13 @@ Two threads ran through the entire build.
 
 **1. Production architecture over hackathon shortcuts.** Every workaround that compromises the real product's integrity is a lost opportunity to demonstrate production thinking. _"Every time you say we don't need to think like this for the hackathon is each time we lose."_ No hidden fees, no custody for the agent, no shortcuts on the trust model. The agent fee is shown as a separate line item on the deploy screen because Paxmata exists _because_ construction payments are opaque, and hiding our own fees would contradict the thesis.
 
-**2. Accessibility by design.** Six languages because development finance happens in places that don't speak English. The cross-chain split is invisible to the funder — they see one project, even though it runs across 0G and Sepolia. Wallet connect, error messages, and the spec view all defer to whatever language the user wrote in. The agent reads the language they speak, not the other way round.
+**2. Accessibility by design.** Six languages because development finance happens in places that don't speak English. The cross-chain split is invisible to the funder, they see one project, even though it runs across 0G and Sepolia. Wallet connect, error messages, and the spec view all defer to whatever language the user wrote in. The agent reads the language they speak, not the other way round.
 
 ---
 
 ## Demo
 
 🎥 _Demo video link — added before submission_
-
-🌐 _Live deployment — added before submission_
-
-📜 _Sample project on 0G ChainScan — added before submission_
 
 ---
 
