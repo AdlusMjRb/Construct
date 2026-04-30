@@ -107,6 +107,91 @@ router.post("/set-text", async (req, res) => {
   }
 });
 
+router.post("/set-records", async (req, res) => {
+  try {
+    const { subname, escrowAddress, payeeAddress, milestoneCount } =
+      req.body ?? {};
+
+    if (typeof subname !== "string" || !subname.endsWith(".construct.eth")) {
+      throw new Error("subname must be a *.construct.eth name");
+    }
+    if (!ethers.isAddress(escrowAddress)) {
+      throw new Error("escrowAddress is not a valid address");
+    }
+    if (!ethers.isAddress(payeeAddress)) {
+      throw new Error("payeeAddress is not a valid address");
+    }
+    if (
+      !Number.isInteger(milestoneCount) ||
+      milestoneCount < 1 ||
+      milestoneCount > 50
+    ) {
+      throw new Error("milestoneCount must be an integer between 1 and 50");
+    }
+
+    // Initial schema. project_manifest is populated on completion with the
+    // 0G Storage hash of the full manifest, so we skip the empty stub here.
+    const records = [
+      { key: "escrow_address", value: escrowAddress },
+      { key: "escrow_chain", value: "16602" },
+      { key: "status", value: "in_progress" },
+      { key: "payee", value: payeeAddress },
+      { key: "milestone_count", value: String(milestoneCount) },
+      { key: "current_milestone", value: "0" },
+    ];
+
+    console.log(
+      `   🟧 set-records: firing ${records.length} sequential setText calls for ${subname}`,
+    );
+
+    // Sequential fire — KH's nonce lock can't handle parallel sends from the
+    // same MPC wallet. Each setText must complete (or fail) before the next.
+    const results = [];
+    for (const r of records) {
+      try {
+        const result = await setTextRecord({
+          subname,
+          key: r.key,
+          value: r.value,
+        });
+        results.push({
+          key: r.key,
+          status: "submitted",
+          executionId: result.executionId ?? null,
+        });
+      } catch (err) {
+        results.push({
+          key: r.key,
+          status: "failed",
+          error: err?.message ?? String(err),
+        });
+      }
+    }
+
+    const failedCount = results.filter((r) => r.status === "failed").length;
+    if (failedCount === records.length) {
+      throw new Error(
+        `All ${records.length} text record writes failed — check KH connectivity`,
+      );
+    }
+    if (failedCount > 0) {
+      console.warn(
+        `   ⚠️  set-records: ${failedCount}/${records.length} writes failed for ${subname}`,
+      );
+    }
+
+    res.json({
+      ok: true,
+      subname,
+      submitted: records.length - failedCount,
+      total: records.length,
+      records: results,
+    });
+  } catch (err) {
+    sendError(res, err, err.message?.includes("KH") ? 502 : 400);
+  }
+});
+
 router.get("/read-text", async (req, res) => {
   try {
     const { subname, key } = req.query;

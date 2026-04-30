@@ -10,7 +10,7 @@ const NAME_WRAPPER_ABI = [
   "function ownerOf(uint256 id) view returns (address)",
   "function balanceOf(address account, uint256 id) view returns (uint256)",
 ];
-
+const KH_PRIORITY_FEE_FLOOR_WEI = 1_000n;
 let _sepoliaProvider = null;
 function getSepoliaProvider() {
   if (_sepoliaProvider) return _sepoliaProvider;
@@ -19,6 +19,45 @@ function getSepoliaProvider() {
   }
   _sepoliaProvider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
   return _sepoliaProvider;
+}
+
+/**
+ * Pre-flight check before firing any KH-signed Sepolia tx.
+ *
+ * KH's Web3 Write Contract action hardcodes maxPriorityFeePerGas at 0.1 gwei
+ * on Sepolia, but computes maxFeePerGas dynamically from base fee. When base
+ * fee drops below 0.1 gwei (Sepolia is bursty), the resulting tx violates
+ * EIP-1559's max >= priority invariant and ethers v6 rejects it with
+ * BAD_DATA before it reaches Turnkey to sign. The KH execution still shows
+ * "running" so we waste 90s polling for a confirmation that will never come.
+ *
+ * This check fails fast with a clear message instead.
+ */
+async function ensureSepoliaGasReady() {
+  const provider = getSepoliaProvider();
+  const [block, network] = await Promise.all([
+    provider.getBlock("latest"),
+    provider.getNetwork(),
+  ]);
+  console.log("[gas-preflight]", {
+    rpcUrl: SEPOLIA_RPC,
+    chainId: network.chainId.toString(),
+    blockNumber: block?.number,
+    baseFeePerGasWei: block?.baseFeePerGas?.toString(),
+    baseFeeGwei: block?.baseFeePerGas
+      ? Number(block.baseFeePerGas) / 1e9
+      : null,
+  });
+  if (!block?.baseFeePerGas) return; // pre-EIP-1559, shouldn't happen on Sepolia
+  if (block.baseFeePerGas < KH_PRIORITY_FEE_FLOOR_WEI) {
+    const baseGwei = Number(block.baseFeePerGas) / 1e9;
+    throw new Error(
+      `Sepolia base fee is ${baseGwei.toFixed(4)} gwei, below KeeperHub's ` +
+        `hardcoded priority fee floor (0.1 gwei). The tx would be malformed. ` +
+        `Wait for Sepolia base fee to recover or send a few self-txs to bump ` +
+        `it. (Known KH bug — tracked in feedback.)`,
+    );
+  }
 }
 
 /**
@@ -86,6 +125,7 @@ export async function mintSubname({
   if (!ethers.isAddress(ownerWallet)) {
     throw new Error("ownerWallet is not a valid address");
   }
+  await ensureSepoliaGasReady();
 
   // Default expiry: max uint64 (effectively no expiry — child of construct.eth's expiry)
   const expiryValue = expiry ?? "18446744073709551615"; // uint64 max as STRING (KH schema requires it)
@@ -165,16 +205,6 @@ export async function mintSubname({
   );
 }
 
-/**
- * Trigger KeeperHub setText workflow to write a text record on a wrapped
- * subname's resolver. MPC wallet signs the tx on Sepolia.
- *
- * @param {object} params
- * @param {string} params.subname - Full ENS name, e.g. "tylers-tools.construct.eth"
- * @param {string} params.key - Text record key (e.g. "escrow_address")
- * @param {string} params.value - Text record value
- * @returns {Promise<{ subname, node, key, value, executionId }>}
- */
 export async function setTextRecord({ subname, key, value }) {
   if (!config.keeperHubApiKey) {
     throw new Error("KEEPERHUB_API_KEY is not set in .env");
@@ -191,6 +221,7 @@ export async function setTextRecord({ subname, key, value }) {
   if (typeof value !== "string") {
     throw new Error("value must be a string (use empty string for no value)");
   }
+  await ensureSepoliaGasReady();
 
   const node = namehash(subname);
 
@@ -219,18 +250,45 @@ export async function setTextRecord({ subname, key, value }) {
     `   🟧 setText: KH accepted (executionId=${webhookData.executionId})`,
   );
 
-  // Optional: poll the resolver to confirm the value lands on-chain. We can
-  // skip this for batched writes (just fire-and-forget) and add a single
-  // final confirmation read after all records are set. For now, return the
-  // execution metadata.
-  return {
-    subname,
-    node,
-    key,
-    value,
-    executionId: webhookData.executionId,
-    status: webhookData.status ?? "submitted",
-  };
+  // Wait for the record to actually land. KH returns 200 immediately on
+  // webhook accept; the tx confirmation comes later. We need to block here
+  // so the next sequential setText doesn't race into KH's nonce lock.
+  const provider = getSepoliaProvider();
+  const resolver = new ethers.Contract(
+    PUBLIC_RESOLVER_ADDRESS,
+    ["function text(bytes32 node, string key) view returns (string)"],
+    provider,
+  );
+
+  const startedAt = Date.now();
+  const timeoutMs = 90_000;
+  const intervalMs = 4_000;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    await new Promise((r) => setTimeout(r, intervalMs));
+    try {
+      const onchain = await resolver.text(node, key);
+      if (onchain === value) {
+        const elapsed = Date.now() - startedAt;
+        console.log(`   ✅ setText: ${key} confirmed on-chain in ${elapsed}ms`);
+        return {
+          subname,
+          node,
+          key,
+          value,
+          executionId: webhookData.executionId,
+          status: "confirmed",
+          elapsedMs: elapsed,
+        };
+      }
+    } catch (err) {
+      console.warn(`   ⚠️  setText poll error (will retry): ${err.message}`);
+    }
+  }
+
+  throw new Error(
+    `setText for ${key} not confirmed on ${subname} within ${timeoutMs}ms`,
+  );
 }
 
 /**

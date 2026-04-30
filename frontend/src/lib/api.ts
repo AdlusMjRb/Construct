@@ -127,7 +127,7 @@ export async function apiPrepareProject(params: {
   return unwrap<PrepareProjectResponse>(res);
 }
 
-// 2. New function for mint-subname (add anywhere in the file)
+// 2. New function for mint-subname
 
 export interface MintSubnameResponse {
   label: string;
@@ -151,6 +151,32 @@ export async function apiMintSubname(params: {
     body: JSON.stringify(params),
   });
   return unwrap<MintSubnameResponse>(res);
+}
+
+export interface SetRecordsResponse {
+  subname: string;
+  submitted: number;
+  total: number;
+  records: Array<{
+    key: string;
+    status: "submitted" | "failed";
+    executionId?: string | null;
+    error?: string;
+  }>;
+}
+
+export async function apiSetRecords(params: {
+  subname: string;
+  escrowAddress: string;
+  payeeAddress: string;
+  milestoneCount: number;
+}): Promise<SetRecordsResponse> {
+  const res = await fetch(`${API_BASE}/projects/set-records`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(params),
+  });
+  return unwrap<SetRecordsResponse>(res);
 }
 
 export async function apiVerifyEvidence(params: {

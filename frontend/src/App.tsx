@@ -15,6 +15,7 @@ import {
   apiGetEscrow,
   apiMintSubname,
   apiPrepareProject,
+  apiSetRecords,
   apiTranslateSpec,
   apiTranslateVerification,
   apiVerifyEvidence,
@@ -392,6 +393,7 @@ export default function App() {
       // future projects this user creates. We use localStorage to skip
       // re-prompting users who've already approved (the resolver doesn't
       // expose a cheap on-chain readback).
+      let resolverAuthorised = false;
       if (ensData) {
         try {
           const approvalKey = `resolver-approved:${userAddress.toLowerCase()}`;
@@ -417,12 +419,28 @@ export default function App() {
           } else {
             console.log("Resolver approval cached locally, skipping prompt");
           }
+          resolverAuthorised = true;
         } catch (approvalErr) {
           console.error("Resolver approval failed:", approvalErr);
           setErrorMessage(
             "ENS identity created, but Construct couldn't be authorised to update its records. The agent will still complete milestones — you can grant permission later.",
           );
         }
+      }
+
+      // Fire-and-forget: write initial text records to bridge Sepolia identity
+      // to 0G escrow state. DON'T await, user moves to Shutter 3
+      // immediately while records confirm in the background (~15-30s).
+      // Records can be retried later if this fails; escrow + ENS still work.
+      if (ensData && resolverAuthorised) {
+        apiSetRecords({
+          subname: ensData.fullName,
+          escrowAddress: contractAddress,
+          payeeAddress: devWallet,
+          milestoneCount: milestones.length,
+        }).catch((err) => {
+          console.error("set-records failed (non-fatal):", err);
+        });
       }
 
       setDeploymentData({
@@ -535,8 +553,7 @@ export default function App() {
     try {
       // INVARIANT: always verify against canonical milestones, never the
       // translated display copies. The agent's world is monolingual —
-      // language is a view-layer concern only. If you change this to
-      // `displayMilestones[milestoneIndex]`, you break the audit story.
+      // language is a view-layer concern only.
       const m = milestones[milestoneIndex];
       const r = await apiVerifyEvidence({
         contractAddress: deploymentData.contractAddress,
@@ -563,7 +580,7 @@ export default function App() {
   /**
    * Manual override for escalated milestones.
    * The connected wallet (project owner) calls completeMilestone() directly.
-   * The contract's onlyOwnerOrAgent modifier permits this — no backend round-trip.
+   * The contract's onlyOwnerOrAgent modifier permits this, no backend round-trip.
    */
   const handleManualRelease = async (
     milestoneId: string,
@@ -623,7 +640,7 @@ export default function App() {
   const handleLanguageChange = async (newLang: string) => {
     setDisplayLang(newLang);
 
-    // Switching back to canonical — drop both translated views.
+    // Switching back to canonical, drop both translated views.
     if (newLang === canonicalLang) {
       setTranslatedMilestones(null);
       setTranslatedVerificationResults(null);
@@ -635,7 +652,6 @@ export default function App() {
     const specCacheKey = `translation:${deploymentData.contractAddress}:${newLang}`;
     const verifyCacheKey = `translation-verify:${deploymentData.contractAddress}:${newLang}`;
 
-    // Hydrate from cache first so the UI flips instantly if we have it.
     let specCached = false;
     const cachedSpec = localStorage.getItem(specCacheKey);
     if (cachedSpec) {
@@ -658,7 +674,6 @@ export default function App() {
       }
     }
 
-    // Work out what we still need to fetch.
     const needSpec = !specCached;
     const existingResultIds = Object.keys(verificationResults);
     const cachedIds = Object.keys(cachedVerifyMap);
