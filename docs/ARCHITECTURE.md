@@ -37,12 +37,13 @@ The system has three functional surfaces:
 - **Verification surface** — a multi-layer authenticity check (the Trust Stack) followed by a Claude Vision call that assesses evidence against the structured criteria.
 - **Settlement surface** — a Solidity escrow contract on 0G Chain with a separate owner/agent role split, released by an MPC wallet routed via KeeperHub.
 - **Identity surface** — a wrapped ENS subname on Sepolia, owned by the funder, with text records on the resolver bridging to the 0G escrow state. Project ownership is portable; transferring the subname NFT transfers the project.
+- **Continuity surface** — a project handover flow that survives the original builder. The ENS subname is transferable; the on-chain escrow state and 0G Storage spec are recoverable. A new wallet inherits the project, deploys a fresh escrow, and the same NFT repoints to it — one project, one identity, multiple escrows over its lifetime.
 
 Each surface is designed to be replaced without rewriting the others. Claude Sonnet could become a fine-tuned model. Reality Defender could be swapped for a different AI-detection API. KeeperHub's MPC wallet could become an ERC-4337 smart account. The contract stays the same because the interfaces are configurable at deployment time. The architecture is also cross-chain by design. Settlement and storage are co-located on 0G (the chain purpose-built for AI-native applications, where the canonical milestone spec lives in 0G Storage with its hash embedded in the escrow contract); identity is on ENS, which is canonical on Ethereum (Sepolia for the hackathon, mainnet in production). The split exists because each chain is the right substrate for what runs on it. A single MPC wallet signs across both, so the cross-chain footprint is invisible to the funder, they see one unified project, even though it spans two chains. This is accessibility by design.
 
 ## 1. System Diagram
 
-![](./assets/diagrams/construct-architecture.svg)
+![](//frontend/src/assets/construct-architecture.svg)
 
 ## 2. The pipeline
 
@@ -120,6 +121,37 @@ The backend does not rely on KeeperHub's status endpoint to detect completion (i
 On `ESCALATE`, no autonomous action occurs. The frontend renders the escalated card with the AI's reasoning visible, and the funder can click "Approve & Release" to call `completeMilestone()` directly from their own wallet, no backend, no MPC, the funder's own signature.
 
 On `APPROVE`, the agent also updates the project's ENS state on Sepolia. The same MPC wallet that signed `completeMilestone` on 0G is fired through KeeperHub's `setText` workflow on Sepolia, updating the `current_milestone` index and (if it was the final milestone) the `status` record from `in_progress` to `completed`. The escrow on 0G is the source of truth; the ENS records are the bridge that makes the project state legible to anything reading the subname.
+
+### 2.6 Handover (optional, when continuity is needed)
+
+If the original builder fails or the project changes hands mid-flight, Construct supports a non-destructive handover. The flow has three on-chain steps and is designed so the audit trail is sealed _before_ the NFT moves.
+
+**Step 1 — Seal the old escrow's records.** The funder triggers `POST /api/projects/handover` from their wallet. The MPC, still operating under the funder's resolver approval, writes two final records to the existing subname: `status: "handed_over"` and `handed_over_to: <recipient address>`. These writes happen first because once the NFT transfers, the recipient's resolver approval has not yet been granted, and the MPC loses its write authority for that name. Sealing first preserves the audit invariant: a project marked `handed_over` always carries the address it was handed to.
+
+**Step 2 — Transfer the NFT.** With records sealed, the funder signs `safeTransferFrom` on the Sepolia NameWrapper, moving the wrapped subname (ERC-1155) to the recipient. Ownership of the project's identity has now shifted; the underlying 0G escrow on the old contract is unchanged but no longer linked to an active builder.
+
+**Step 3 — Recipient loads the project.** The recipient connects their wallet to Construct and clicks _Load Existing Project_. The backend (`GET /api/projects/by-owner/:wallet`) queries the subname registry, then re-verifies ownership against `NameWrapper.balanceOf` on Sepolia. For each owned subname, the recipient can call `GET /api/projects/load/:subname`, which:
+
+1. Reads the text records from Sepolia to find the old escrow address and 0G Storage hash.
+2. Reads the old escrow's milestone state from 0G Chain to determine which milestones were already completed.
+3. Downloads the original spec from 0G Storage to recover acceptance criteria, evidence instructions, and confidence thresholds.
+4. Returns the _remaining_ milestones as a continuation spec, with the old payee address as a default for the new escrow.
+
+**Step 4 — Repoint.** The recipient reviews the inherited milestones, optionally re-prices them (the recipient may negotiate different rates), locks them, and deploys a fresh `MilestoneEscrow` contract on 0G Chain — funding it themselves in the same transaction. Because the recipient's resolver approval has not yet been granted, they sign a one-off `setApprovalForAll` on the Sepolia PublicResolver as part of the same flow.
+
+Once the new escrow is live, `POST /api/projects/repoint` writes seven records to the _same_ subname:
+
+- `escrow_address` → new escrow contract on 0G
+- `escrow_chain` → `16602`
+- `status` → `in_progress`
+- `payee` → new builder address (often the recipient themselves)
+- `milestone_count` → number of remaining milestones
+- `current_milestone` → `0`
+- `handed_over_to` → empty string (clears the handover marker)
+
+The subname now points at a new escrow with new terms but the same identity. Anyone reading the subname sees an active project; anyone reading the _old_ escrow on 0G sees a settled contract whose ENS link has moved on. _One project, one NFT, multiple escrows over its life._
+
+The continuation flow is non-destructive: the old escrow, its completed milestones, and any unspent funds remain on-chain. A future protocol upgrade may surface unspent funds for refund or roll-forward (see §11 roadmap).
 
 ---
 
@@ -285,6 +317,44 @@ Each workflow resolves its template, constructs the transaction, and signs it vi
 
 **Turnkey MPC wallet as both the 0G `_agent` and the ENS operator.** The wallet address is configured at contract deployment via `KEEPERHUB_AGENT_ADDRESS` and is also the operator granted resolver approval on Sepolia. The signing key is split across parties using multi-party computation — no single party (including Turnkey itself) can produce a valid signature alone. From the contract's perspective on either chain, `msg.sender` is a single address; from Paxmata's perspective, it is an address whose key does not exist on any Paxmata server.
 
+### 3.9 Continuity layer (handover + repoint)
+
+The continuity layer turns a project from "this contract" into "this NFT, with whatever contract is currently active." It spans the backend handover routes, the subname registry, and the frontend's load + repoint flow.
+
+**Backend module: `src/routes/handover.mjs`.** Three endpoints:
+
+| Route                                | Purpose                                                                                                                          |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/projects/by-owner/:wallet` | Returns subnames currently held by the wallet, verified against `NameWrapper.balanceOf` on Sepolia                               |
+| `GET /api/projects/load/:subname`    | Reads text records, hydrates the old escrow's state from 0G, fetches original spec from 0G Storage, returns remaining milestones |
+| `POST /api/projects/handover`        | Seals `status: handed_over` + `handed_over_to` records on the old subname before NFT transfer                                    |
+| `POST /api/projects/repoint`         | Writes the seven-record set that links the same subname to a new escrow                                                          |
+
+The `handover` and `repoint` writes are sequential (KH nonce lock — single MPC wallet across both chains). Failure modes are surfaced as structured `records[]` arrays in the response so the frontend can show partial-success state if the chain rejects a specific write.
+
+**Subname registry: `src/storage/subname-registry.mjs`.** A JSON file at `backend/data/subnames.json` tracks every subname Construct has minted. Each entry stores:
+
+- `subname` — fully qualified name (`<label>.construct.eth`)
+- `tokenId` — wrapped subname's ERC-1155 token id
+- `currentOwner` — cached owner address; verified live against the NameWrapper on every lookup
+- `escrowAddress` — current 0G escrow this subname points at; updated on repoint
+- `mintedAt` / `updatedAt` — timestamps
+
+The registry is a cache, not a source of truth. Every read re-verifies ownership against `NameWrapper.balanceOf`, so a stale `currentOwner` value never produces an incorrect result — it just produces an extra RPC call. For the hackathon a JSON file is sufficient; production would back this with Postgres or similar.
+
+**Frontend: load + repoint flow in `App.tsx`.** The recipient's frontend follows a tightly bounded state machine:
+
+1. _Load_ — `apiGetProjectsByOwner` returns owned subnames. If exactly one, it auto-loads. If two or more, a picker modal opens at App level.
+2. _Hydrate_ — `apiLoadProject` populates Shutter 2 with remaining milestones. Each milestone arrives with full criteria, evidence instructions, and inherited price. The `inheritedSubname` flag is set in App state.
+3. _Adjust + lock_ — the recipient may edit prices before locking. Locking does not commit to the chain; it commits to deployment input.
+4. _Deploy_ — when `inheritedSubname` is set, `handleDeploy` skips the `apiMintSubname` call and instead calls `apiRepointSubname` after the new escrow's transaction confirms.
+
+The mint-vs-repoint branch is the entire structural difference between a fresh project and a continuation. Everything downstream — verification, release, ENS sync — is identical.
+
+**Cross-chain authority caveat.** During handover, the MPC's resolver approval is granted _per (owner, operator) pair on the PublicResolver_. When the NFT transfers to a new owner, the MPC's existing approval (granted by the original owner) becomes invalid for that subname — the resolver re-checks `ownerOf(node)` per write call, and the new owner has not yet granted approval. This is why the handover records are written _before_ the NFT moves. After transfer, the recipient grants their own resolver approval as part of their first deploy, restoring the MPC's write authority for any future records on subnames they own.
+
+**Architectural note.** A project's `_agent` address is set at deployment of each escrow. The MPC wallet remains the same identity across handovers because Construct itself is the operator; what changes is the funder/payee/escrow tuple. From the agent's perspective, every project it ever signs for shares one signing identity. From the funder's and recipient's perspective, the agent is invisible — they see only their own wallet on Sepolia and their own escrow on 0G.
+
 ---
 
 ## 4. Custody model
@@ -348,6 +418,8 @@ Several patterns in the current build exist specifically to handle real-world ed
 **Canonical-language invariant.** The verification routes always read from the canonical `milestones[]` array, never from translated `displayMilestones`. Mutating a canonical field to a translated value would break audit reconciliation between the English record and any translated view. Enforced in code with a comment next to the relevant line.
 
 **Pre-flight gas check on Sepolia.** KeeperHub's Web3 Write Contract action hardcodes `maxPriorityFeePerGas` at 0.1 gwei on Sepolia but computes `maxFeePerGas` dynamically from base fee. When Sepolia base fee drops below 0.1 gwei (common during quiet periods), the resulting tx violates EIP-1559's `maxFee` ≥ `priorityFee` invariant and is rejected by ethers v6 inside KH's wrapper before reaching Turnkey to sign — but KH's execution status stays running, so the backend would otherwise burn its full 90s polling timeout. The backend pre-flights every Sepolia operation by reading `block.baseFeePerGas` and refusing to fire the webhook if base fee is below 0.1 gwei. Surfaces in ~200ms with a clear error. Documented in `KEEPERHUB_FEEDBACK.md.`
+
+**Handover-before-transfer ordering.** A project's status records (`status`, `handed_over_to`) must be written to the old subname _before_ the NFT transfers, not after. The PublicResolver re-checks `ownerOf(node)` on every `setText` call, and the MPC's `setApprovalForAll` is granted by the original owner — once the NFT moves, that approval no longer authorises writes for the new owner's subnames. The handover endpoint blocks on the record writes confirming on Sepolia (typical: 12s each, sequential) before the frontend prompts for the transfer signature. If a record write fails, the transfer is aborted with a clear error rather than producing a half-handed-over state.
 
 ---
 
