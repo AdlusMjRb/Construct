@@ -154,7 +154,20 @@ async function waitForReceiptResilient(
     }
   }
 }
-
+function relativeTime(iso: string | undefined): string {
+  if (!iso) return "";
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  return new Date(iso).toLocaleDateString();
+}
 // ─── Main App ────────────────────────────────────────────────────
 
 export default function App() {
@@ -173,6 +186,23 @@ export default function App() {
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // ─── Inherited project auto-detection ──────────────────────────
+  const [inheritedProjectCount, setInheritedProjectCount] = useState<
+    number | null | undefined
+  >(undefined);
+  useEffect(() => {
+    if (!isConnected || !userAddress) {
+      setInheritedProjectCount(undefined);
+      return;
+    }
+    setInheritedProjectCount(null);
+    apiGetProjectsByOwner(userAddress)
+      .then((res) => setInheritedProjectCount(res.owned?.length ?? 0))
+      .catch((err) => {
+        console.warn("by-owner check failed:", err);
+        setInheritedProjectCount(undefined);
+      });
+  }, [isConnected, userAddress]);
   // ─── Form state ────────────────────────────────────────────────
   const [projectTitle, setProjectTitle] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
@@ -466,6 +496,16 @@ export default function App() {
           if (!alreadyApproved) {
             setLoadingPhase("approving-mpc");
             await switchChainAsync({ chainId: sepolia.id });
+
+            // WalletConnect's session namespace updates async after a
+            // chain switch — without this delay, writeContract fires
+            // before WC's isValidRequest() sees Sepolia as approved
+            // and rejects with "Missing or invalid. request() chainId".
+            // Only bites recipient wallets that haven't previously
+            // hit Sepolia in this session (funder skips this branch
+            // entirely via the localStorage cache).
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+
             const approvalHash = await walletClient.writeContract({
               chain: sepolia,
               address: PUBLIC_RESOLVER_ADDRESS,
@@ -870,33 +910,102 @@ export default function App() {
     setLoadingProjects(false);
   };
 
-  /**
-   * Loads the chosen subname's remaining milestones into Shutter 2 state.
-   *
-   * Reconstructs the Milestone[] array from the backend response — backend
-   * gives us name, %, amountEth, plus the rich spec fields (description,
-   * acceptance_criteria) recovered from 0G Storage. Each milestone gets a
-   * fresh client-side id so React keys don't collide if the user has
-   * multiple projects.
-   *
-   * Pre-fills price from the OLD escrow's amount per milestone. The user
-   * can adjust before locking, Shutter 2 already supports per-milestone
-   * price editing.
-   */
   const loadInheritedProject = async (subname: string) => {
     setLoadingProjects(true);
     setErrorMessage(null);
     try {
       const data = await apiLoadProject(subname);
 
+      if (data.mode === "continue") {
+        // Project is live and in_progress — restore the deployment data
+        // and jump to Shutter 3 so the recipient can submit evidence
+        // against the existing escrow.
+        const escrow = await apiGetEscrow(data.inheritedFrom.oldEscrowAddress);
+
+        // Reconstruct the full milestones array from on-chain state +
+        // recovered spec. Different from the redeploy path: we want ALL
+        // milestones (completed and remaining) so Shutter 3 can show
+        // the full history, not just what's left.
+        const allMilestones: Milestone[] = escrow.milestones.map((m, i) => {
+          // Try to find the rich spec for this milestone if available
+          const fromSpec = data.remainingMilestones.find(
+            (rm) => rm.name === m.name,
+          );
+          return {
+            id: crypto.randomUUID(),
+            header: m.name,
+            description: fromSpec?.description ?? "",
+            evidenceRequired:
+              fromSpec?.acceptance_criteria
+                .map((c) => `[${c.evidence_type}] ${c.evidence_instruction}`)
+                .join(" | ") ?? "",
+            acceptance_criteria: fromSpec?.acceptance_criteria ?? [],
+            verification_confidence:
+              fromSpec?.verification_confidence ?? "medium",
+            price: m.amount,
+            percentage: m.percentage,
+            locked: true, // already deployed; lock for display
+            completed: m.completed, // ← assumes Milestone type has this
+          };
+        });
+
+        setProjectTitle(data.project.title);
+        setProjectDescription(data.project.summary);
+        setMilestones(allMilestones);
+        setCanonicalLang(data.project.canonical_language);
+        setDisplayLang(data.project.canonical_language);
+        setTranslatedMilestones(null);
+        setTranslatedVerificationResults(null);
+
+        // Restore deployment data so Shutter 3 has everything it needs.
+        setDeploymentData({
+          contractAddress: data.inheritedFrom.oldEscrowAddress,
+          storageHash: data.inheritedFrom.oldStorageHash,
+          deployTxHash: "" as `0x${string}`, // not recoverable, leave blank
+          agentAddress: "", // backend can supply this if needed
+          chainScanUrl: `https://chainscan-galileo.0g.ai/address/${data.inheritedFrom.oldEscrowAddress}`,
+          storageScanUrl: "",
+          escrowAmount: escrow.budget?.toString() ?? "0",
+          agentReserve: "0",
+          ensSubname: data.inheritedFrom.subname,
+          ensTokenId: null, // can be re-fetched from registry if needed
+          ensSepoliaUrl: `https://sepolia.app.ens.domains/${data.inheritedFrom.subname}`,
+        });
+
+        // Reset evidence/verification state — those are fresh per-session.
+        setEvidenceFiles({});
+        setEvidenceText({});
+        setVerificationResults({});
+
+        // NOT setting inheritedSubname — we are NOT redeploying, so the
+        // deploy flow should never fire on this project.
+        setInheritedSubname(null);
+
+        setProjectPickerOpen(false);
+        setOwnedProjects(null);
+        setActiveShutter(2);
+        setFurthestShutter(2);
+        return;
+      }
+
+      if (data.mode === "completed") {
+        setErrorMessage(
+          "This project is complete. All milestones have been verified and paid.",
+        );
+        setProjectPickerOpen(false);
+        setLoadingProjects(false);
+        return;
+      }
+
+      // Default path: redeploy. This is your existing logic — the recipient
+      // needs to deploy a fresh escrow under this subname (handed_over, or
+      // existing escrow doesn't exist on-chain anymore).
       if (data.remainingMilestones.length === 0) {
         throw new Error(
           "All milestones on this project are already complete — nothing to continue.",
         );
       }
 
-      // Rebuild the milestones array from the inherited spec. Mark them
-      // unlocked so the recipient can adjust pricing before deploy.
       const inherited: Milestone[] = data.remainingMilestones.map((m) => ({
         id: crypto.randomUUID(),
         header: m.name,
@@ -906,13 +1015,11 @@ export default function App() {
           .join(" | "),
         acceptance_criteria: m.acceptance_criteria,
         verification_confidence: m.verification_confidence,
-        price: m.amountEth, // inherited price; user can edit
+        price: m.amountEth,
         percentage: m.percentage,
         locked: false,
       }));
 
-      // Hydrate the form fields so Shutter 2's deploy summary shows the
-      // right project name, the suggested builder, and a sensible total.
       const inheritedTotal = inherited.reduce(
         (sum, m) => sum + parseFloat(m.price || "0"),
         0,
@@ -927,18 +1034,12 @@ export default function App() {
       setDisplayLang(data.project.canonical_language);
       setTranslatedMilestones(null);
       setTranslatedVerificationResults(null);
-
-      // Mark this as an inherited project, deploy flow on Shutter 2 will
-      // skip the mint step and call /repoint instead.
       setInheritedSubname(subname);
-
-      // Reset deployment-side state so the new escrow's data lands cleanly.
       setDeploymentData(null);
       setEvidenceFiles({});
       setEvidenceText({});
       setVerificationResults({});
 
-      // Jump to Shutter 2 (review).
       setProjectPickerOpen(false);
       setOwnedProjects(null);
       setActiveShutter(1);
@@ -950,7 +1051,6 @@ export default function App() {
     }
     setLoadingProjects(false);
   };
-
   // ─── Handlers: language switching ──────────────────────────────
 
   /**
@@ -1245,8 +1345,7 @@ export default function App() {
                 lineHeight: 1.6,
               }}
             >
-              Your wallet owns {ownedProjects.length} projects. Select one to
-              continue.
+              Your wallet owns {ownedProjects.length} projects. Newest first.
             </p>
 
             <div
@@ -1279,13 +1378,33 @@ export default function App() {
                   </div>
                   <div
                     style={{
-                      fontSize: "11px",
-                      color: P.textDim,
-                      fontFamily: "'JetBrains Mono', monospace",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "12px",
                     }}
                   >
-                    Last escrow: {p.escrowAddress.slice(0, 10)}...
-                    {p.escrowAddress.slice(-8)}
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: P.textDim,
+                        fontFamily: "'JetBrains Mono', monospace",
+                      }}
+                    >
+                      {p.escrowAddress.slice(0, 10)}...
+                      {p.escrowAddress.slice(-8)}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "10px",
+                        color: P.textDim,
+                        fontWeight: 600,
+                        letterSpacing: "0.5px",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {relativeTime(p.updatedAt) || relativeTime(p.mintedAt)}
+                    </div>
                   </div>
                 </button>
               ))}
@@ -1417,6 +1536,7 @@ export default function App() {
                 isConnected={isConnected}
                 loadingProjects={loadingProjects}
                 onLoadExistingClick={handleLoadProjectsClick}
+                inheritedProjectCount={inheritedProjectCount}
               />
             )}
 

@@ -26,6 +26,12 @@ function getSepoliaProvider() {
 
 function sendError(res, err, status = 400) {
   console.error("Handover route error:", err.message);
+  // Guard against double-send: if we've already responded for any reason,
+  // log and bail rather than crashing the process with ERR_HTTP_HEADERS_SENT.
+  if (res.headersSent) {
+    console.warn("   ⚠️  sendError: headers already sent, skipping.");
+    return;
+  }
   res.status(status).json({ ok: false, error: err.message });
 }
 
@@ -33,8 +39,8 @@ function sendError(res, err, status = 400) {
  * GET /api/projects/by-owner/:wallet
  *
  * Returns all subnames currently held by this wallet according to the
- * NameWrapper. The backend registry is the candidate set, but construct always
- * re-verify ownership on-chain via balanceOf, so transferred subnames
+ * NameWrapper. The backend registry is the candidate set, but Construct always
+ * re-verifies ownership on-chain via balanceOf, so transferred subnames
  * surface correctly regardless of registry staleness.
  */
 router.get("/by-owner/:wallet", async (req, res) => {
@@ -74,6 +80,16 @@ router.get("/by-owner/:wallet", async (req, res) => {
     );
 
     const owned = checks.filter(Boolean);
+
+    // Sort newest first by updatedAt (handover/repoint touches updatedAt,
+    // fresh mint sets both mintedAt and updatedAt). Recipients care most
+    // about "what did I just receive" so newest-first is right.
+    owned.sort((a, b) => {
+      const aTime = new Date(a.updatedAt || a.mintedAt).getTime();
+      const bTime = new Date(b.updatedAt || b.mintedAt).getTime();
+      return bTime - aTime;
+    });
+
     console.log(
       `   🔎 by-owner: ${wallet} holds ${owned.length}/${all.length} known subnames`,
     );
@@ -84,18 +100,6 @@ router.get("/by-owner/:wallet", async (req, res) => {
   }
 });
 
-/**
- * GET /api/projects/load/:subname
- *
- * Hydrates a project for the recipient. Reads text records to find the old
- * escrow, reads the escrow state from 0G, fetches the original spec from
- * 0G Storage, and returns the milestones that haven't been completed yet
- * along with the inherited project metadata.
- *
- * The recipient's frontend uses this to populate Shutter 2 with the
- * remaining work. They can then re-price, lock, deploy a fresh escrow,
- * and repoint the subname.
- */
 router.get("/load/:subname", async (req, res) => {
   try {
     const subname = req.params.subname;
@@ -117,48 +121,145 @@ router.get("/load/:subname", async (req, res) => {
       );
     }
 
-    // Step 2: read the old escrow state on 0G to find what's left.
-    const oldEscrow = await readEscrowState(escrowAddress);
+    // Step 2: handed_over status means recipient needs a fresh deploy
+    // regardless of escrow state. Return early with minimal redeploy payload.
+    if (status === "handed_over") {
+      // Try to recover the spec from storage so the recipient at least sees
+      // the milestone set they're inheriting. If storage fetch fails, return
+      // an empty milestone list and let the frontend handle that case.
+      let originalSpec = null;
+      try {
+        const oldEscrow = await readEscrowState(escrowAddress);
+        const { downloadSpec } = await import("../storage/storage.mjs");
+        originalSpec = await downloadSpec(oldEscrow.storageHash);
+        const remainingMilestones = oldEscrow.milestones.filter(
+          (m) => !m.completed,
+        );
+        const mergedRemaining = remainingMilestones.map((onChain) => {
+          const fromSpec = originalSpec?.milestones?.find(
+            (s) => s.name === onChain.name,
+          );
+          return {
+            name: onChain.name,
+            percentage: onChain.percentage,
+            amountEth: onChain.amountEth,
+            description: fromSpec?.description ?? "",
+            acceptance_criteria: fromSpec?.acceptance_criteria ?? [],
+            verification_confidence:
+              fromSpec?.verification_confidence ?? "medium",
+          };
+        });
+        return res.json({
+          ok: true,
+          mode: "redeploy",
+          inheritedFrom: {
+            subname,
+            oldEscrowAddress: escrowAddress,
+            oldEscrowChain: escrowChain,
+            oldStatus: status,
+            oldPayee: payee,
+            oldStorageHash: oldEscrow.storageHash,
+          },
+          project: {
+            title: originalSpec?.project_title ?? "Inherited Project",
+            summary: originalSpec?.project_summary ?? "",
+            canonical_language: originalSpec?.canonical_language ?? "en",
+            suggested_payee: payee,
+          },
+          remainingMilestones: mergedRemaining,
+          completedCount:
+            oldEscrow.milestones.length - remainingMilestones.length,
+          totalCount: oldEscrow.milestones.length,
+        });
+      } catch (err) {
+        // Old escrow gone or storage unreachable. Recipient can still
+        // redeploy under this subname, just without the spec recovery.
+        console.warn(`   ⚠️  load (handed_over fallback): ${err.message}`);
+        return res.json({
+          ok: true,
+          mode: "redeploy",
+          inheritedFrom: {
+            subname,
+            oldEscrowAddress: escrowAddress,
+            oldEscrowChain: escrowChain,
+            oldStatus: status,
+            oldPayee: payee,
+            oldStorageHash: "",
+          },
+          project: {
+            title: "Inherited Project",
+            summary: "",
+            canonical_language: "en",
+            suggested_payee: payee || "",
+          },
+          remainingMilestones: [],
+          completedCount: 0,
+          totalCount: 0,
+        });
+      }
+    }
+
+    // Step 3: status is in_progress (or unknown). Probe the escrow.
+    let oldEscrow;
+    try {
+      oldEscrow = await readEscrowState(escrowAddress);
+    } catch (err) {
+      // Escrow doesn't exist on-chain anymore (testnet wipe, failed deploy).
+      // Surface this clearly to the frontend rather than crashing.
+      console.warn(
+        `   ⚠️  load: escrow ${escrowAddress} not found on-chain (${err.message})`,
+      );
+      return res.json({
+        ok: true,
+        mode: "redeploy",
+        inheritedFrom: {
+          subname,
+          oldEscrowAddress: escrowAddress,
+          oldEscrowChain: escrowChain,
+          oldStatus: status,
+          oldPayee: payee,
+          oldStorageHash: "",
+        },
+        project: {
+          title: "Inherited Project",
+          summary: "",
+          canonical_language: "en",
+          suggested_payee: payee || "",
+        },
+        remainingMilestones: [],
+        completedCount: 0,
+        totalCount: 0,
+      });
+    }
 
     const remainingMilestones = oldEscrow.milestones.filter(
       (m) => !m.completed,
     );
 
-    if (remainingMilestones.length === 0) {
-      throw new Error(
-        "All milestones on the inherited project are already complete — nothing to continue.",
-      );
-    }
-
-    // Step 3: fetch the original spec from 0G Storage so construct has the rich
-    // milestone fields (description, acceptance_criteria, evidence specs)
-    // that aren't stored on-chain.
+    // Step 4: fetch spec for milestone descriptions/criteria.
     let originalSpec = null;
     try {
       const { downloadSpec } = await import("../storage/storage.mjs");
       originalSpec = await downloadSpec(oldEscrow.storageHash);
     } catch (err) {
-      // Non-fatal: we can still return the on-chain milestone data, just
-      // without descriptions and criteria. Frontend can show a degraded
-      // view rather than failing the whole load.
       console.warn(
         `   ⚠️  load: 0G Storage fetch failed for ${oldEscrow.storageHash}: ${err.message}`,
       );
     }
 
-    // Step 4: merge on-chain remaining milestones with off-chain spec data.
-    // Match by name, that's the join key. If a name doesn't match,
-    // we fall back to whatever the chain gave us.
+    // Step 5: decide mode based on completion. If everything is done, the
+    // project is in the "completed" state — frontend shows a history view
+    // instead of routing to Shutter 2 or 3.
+    const mode = remainingMilestones.length === 0 ? "completed" : "continue";
+
     const mergedRemaining = remainingMilestones.map((onChain) => {
       const fromSpec = originalSpec?.milestones?.find(
         (s) => s.name === onChain.name,
       );
       return {
-        // On-chain truths
         name: onChain.name,
         percentage: onChain.percentage,
         amountEth: onChain.amountEth,
-        // Spec details (may be null if storage fetch failed)
         description: fromSpec?.description ?? "",
         acceptance_criteria: fromSpec?.acceptance_criteria ?? [],
         verification_confidence: fromSpec?.verification_confidence ?? "medium",
@@ -167,6 +268,7 @@ router.get("/load/:subname", async (req, res) => {
 
     res.json({
       ok: true,
+      mode,
       inheritedFrom: {
         subname,
         oldEscrowAddress: escrowAddress,
@@ -212,7 +314,7 @@ router.post("/handover", async (req, res) => {
     console.log(`   🤝 handover: ${subname} → ${newOwner}`);
 
     // Update the local registry cache. Doesn't matter if the writes below
-    // fail, the registry truth is "this subname now belongs to newOwner".
+    // fail — the registry truth is "this subname now belongs to newOwner".
     try {
       await updateSubname(subname, { currentOwner: newOwner });
       console.log(`   📒 registry: ${subname} owner → ${newOwner}`);
@@ -221,7 +323,7 @@ router.post("/handover", async (req, res) => {
     }
 
     // Mark the old subname as handed over. Sequential writes (KH nonce
-    // lock, same constraint as set-records). Fire-and-forget on errors.
+    // lock — same constraint as set-records). Fire-and-forget on errors.
     const writes = [
       { key: "status", value: "handed_over" },
       { key: "handed_over_to", value: newOwner },
@@ -258,14 +360,21 @@ router.post("/handover", async (req, res) => {
  *
  * Called by the recipient's frontend AFTER they've deployed a fresh escrow
  * on 0G. Updates the inherited subname's text records to point at the new
- * escrow, flipping status back to "in_progress" and clearing the handover
- * marker. The same NFT now anchors a new project — that's the whole loop.
+ * escrow, flipping status back to "in_progress". The same NFT now anchors
+ * a new project — that's the whole loop.
  *
  * The recipient must have granted resolver approval to the MPC wallet
  * BEFORE calling this (handled in the frontend deploy flow). Otherwise
  * the setText calls will revert with a permission error.
  *
  * Sequential writes (KH nonce lock — same constraint as set-records).
+ *
+ * Note: we do NOT re-write `handed_over_to` here. KeeperHub's web3 Write
+ * Contract action rejects empty-string values as "missing" for `string`
+ * ABI parameters, which would fail the workflow on the seventh write.
+ * The status flip from "handed_over" → "in_progress" is the meaningful
+ * state change; readers should treat the project as active based on
+ * status alone, regardless of stale handed_over_to data.
  */
 router.post("/repoint", async (req, res) => {
   try {
@@ -294,8 +403,8 @@ router.post("/repoint", async (req, res) => {
     );
 
     // The full record set, in deterministic order. Same shape as the
-    // initial mint set-records, plus we explicitly clear handed_over_to
-    // so the records read as "active project, not pending handover".
+    // initial mint set-records. handed_over_to is intentionally omitted
+    // — see header comment for why.
     const records = [
       { key: "escrow_address", value: newEscrowAddress },
       { key: "escrow_chain", value: "16602" },
@@ -303,7 +412,6 @@ router.post("/repoint", async (req, res) => {
       { key: "payee", value: newPayee },
       { key: "milestone_count", value: String(newMilestoneCount) },
       { key: "current_milestone", value: "0" },
-      { key: "handed_over_to", value: "" },
     ];
 
     const results = [];
@@ -327,8 +435,8 @@ router.post("/repoint", async (req, res) => {
           error: err?.message ?? String(err),
         });
       }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
-
     // Update the local registry so by-owner lookups return the new
     // escrow address for this subname. Cosmetic — by-owner re-checks
     // ownership on-chain regardless, but keeping the cache fresh

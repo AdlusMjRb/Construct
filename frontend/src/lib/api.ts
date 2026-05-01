@@ -247,6 +247,8 @@ export interface LoadedRemainingMilestone {
 }
 
 export interface LoadProjectResponse {
+  ok: true;
+  mode: "continue" | "redeploy" | "completed";
   inheritedFrom: {
     subname: string;
     oldEscrowAddress: string;

@@ -1,4 +1,4 @@
-![](//frontend/src/assets/logo.svg)
+![Construct](frontend/src/assets/logo.svg)
 
 **Autonomous construction escrow agent.** Plans projects, verifies evidence, releases payments, and survives the company that started it.
 
@@ -29,9 +29,7 @@ Five phases. Every layer is on-chain, decentralised, or independently verifiable
 
 If a builder folds mid-project, a sixth flow takes over: **the funder transfers the ENS NFT to a new wallet. The new owner clicks "Load Existing Project," sees the remaining milestones with full history intact, deploys a fresh escrow, and continues.** Same NFT, new escrow, full audit trail.
 
-![](//frontend/src/assets/construct-architecture.svg)
-
----
+## ![Flowchart](frontend/src/assets/construct-architecture.svg)
 
 ## Why Construct is different
 

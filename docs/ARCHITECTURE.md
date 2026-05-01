@@ -43,7 +43,7 @@ Each surface is designed to be replaced without rewriting the others. Claude Son
 
 ## 1. System Diagram
 
-![](//frontend/src/assets/construct-architecture.svg)
+![Flowchart](/frontend/src/assets/construct-architecture.svg)
 
 ## 2. The pipeline
 
