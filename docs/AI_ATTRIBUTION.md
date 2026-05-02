@@ -68,7 +68,7 @@ All smart contract code, every KeeperHub workflow, and every cross-chain integra
 
 ### Claude Code (Anthropic)
 
-Used briefly for in-terminal multi-file refactors. Minor compared to the Projects-based collaboration above.
+Not used.
 
 ### GitHub Copilot
 
@@ -79,18 +79,6 @@ Not used.
 Not used.
 
 ---
-
-## Pre-hackathon work
-
-Per rule 3.3, _"all project code must be written during the hackathon window (April 24 – May 3)"_. Construct's hackathon code was written entirely within that window. Pre-hackathon preparation was limited to:
-
-- Reading 0G, KeeperHub, Turnkey, ENS, C2PA, and Reality Defender documentation
-- Testing 0G Storage SDK upload/download against Galileo testnet
-- Connecting to KeeperHub and verifying the Turnkey MPC wallet could sign on 0G
-- Architecture sketches (no implementation code)
-- Smart contract design notes (no Solidity written until 24 April)
-
-The repo's commit history reflects this, the first substantive commit is dated within the build window.
 
 ### Reused libraries
 
@@ -109,18 +97,6 @@ Standard open-source libraries were used as permitted by rule 3.3 ("open-source 
 | OpenZeppelin Contracts             | 5.x     | Solidity utilities (ReentrancyGuard, etc.) |
 
 No starter kits or scaffolds were used. The contract, backend, and frontend were all written from scratch within the build window, with Claude as the coding partner and the human (Alexander Burge) as the architect, reviewer, and final decision-maker on every line.
-
----
-
-## Why the disclosure matters
-
-Two reasons.
-
-**Honesty.** AI is becoming as fundamental to building software as autocomplete or stack overflow. Pretending otherwise produces opaque, non-reproducible work. Disclosing it in detail, what was used, where, with what guardrails — makes the work auditable and the methodology transferable.
-
-**Architecture as the value.** The thing that makes Construct interesting isn't the code itself; it's the architectural decisions. Those are the human contribution. The trade-offs around custody, the choice to use ENS as a project's spine, the cross-chain split between settlement and identity, the specific shape of the Trust Stack, the continuation loop that lets a project survive its builder — none of those came from a prompt. They came from thinking hard about what the real problem is and what's structurally honest to build for it.
-
-AI accelerated the implementation. It did not author the system.
 
 ---
 
