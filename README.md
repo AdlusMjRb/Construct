@@ -66,7 +66,7 @@ The autonomous agent keeps signing across the chain split. KeeperHub's MPC walle
 
 Every layer decentralised or independently verifiable. One coherent pipeline.
 
-![Construct Architecture](docs/assets/diagrams/construct-architecture.svg)
+![Construct Architecture](frontend/src/assets/construct-architecture.svg)
 
 | Surface      | Component                          | Decentralisation property                                    |
 | ------------ | ---------------------------------- | ------------------------------------------------------------ |
@@ -102,26 +102,32 @@ Full deep-dive in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Run it locally
 
-### Prerequisites
+Construct depends on a self-hosted **KeeperHub** instance, a **Turnkey MPC wallet**, and a registered ENS parent name on Sepolia. Setting these up is non-trivial, so the full step-by-step is in a dedicated guide.
 
-- Node.js ≥ 25
-- npm with `legacy-peer-deps` set
-- An Ethereum wallet with Sepolia ETH and 0G OG (testnet faucets):
-  - 0G Galileo: https://faucet.0g.ai
-  - Sepolia: https://sepoliafaucet.com
-- A Claude API key (https://console.anthropic.com)
-- A WalletConnect project ID (https://cloud.walletconnect.com)
-- A self-hosted KeeperHub instance with the Turnkey MPC wallet configured _(optional — falls back to server-wallet path if absent)_
+**👉 See [`docs/SETUP.md`](docs/SETUP.md) for the full setup walkthrough.**
 
-### Setup
+It covers:
+
+- Prerequisites and faucets
+- Cloning + installing the three repos (Construct, KeeperHub, Postgres via Docker)
+- Creating the Turnkey MPC wallet
+- Adding 0G Galileo to KeeperHub's local database
+- Building the three KeeperHub workflows (`completeMilestone`, `mintSubname`, `setText`)
+- Registering and locking the parent ENS name on Sepolia
+- Configuring environment variables for both backend and frontend
+- The full set of common gotchas (resolver approval scoping, gas fee strategy, KeeperHub status endpoint quirks, etc.)
+
+Allow ~3–4 hours end-to-end if you're starting from scratch. If you just want to **use** the deployed app rather than reproduce the stack, skip the setup and see the demo link below.
+
+### Quick start (if you already have all the prerequisites)
 
 ```bash
-git clone https://github.com/<yourname>/construct.git
-cd construct
+git clone https://github.com/AdlusMjRb/Construct.git
+cd Construct
 
 # Backend
 cd backend
-cp .env.example .env   # fill in your keys
+cp .env.example .env   # fill in your keys per docs/SETUP.md §10
 npm install --legacy-peer-deps
 npm run dev            # runs on http://localhost:3001
 
@@ -132,32 +138,7 @@ npm install --legacy-peer-deps
 npm run dev            # runs on http://localhost:5173
 ```
 
-### Environment variables
-
-#### `backend/.env`
-
-| Variable                     | Required  | Description                                                 |
-| ---------------------------- | --------- | ----------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`          | ✅        | Claude API key                                              |
-| `OG_CHAIN_RPC_URL`           | ✅        | `https://evmrpc-testnet.0g.ai`                              |
-| `OG_STORAGE_INDEXER`         | ✅        | `https://indexer-storage-testnet-turbo.0g.ai`               |
-| `DEPLOYER_PRIVATE_KEY`       | ✅        | Server wallet — fallback agent and 0G Storage upload signer |
-| `SEPOLIA_RPC_URL`            | ✅        | Alchemy or Infura Sepolia endpoint                          |
-| `KEEPERHUB_AGENT_ADDRESS`    | preferred | Turnkey MPC wallet — used as the contract `_agent`          |
-| `KEEPERHUB_WEBHOOK_URL`      | preferred | KeeperHub webhook for `completeMilestone`                   |
-| `KEEPERHUB_MINT_SUBNAME_URL` | preferred | KeeperHub webhook for ENS subname mint                      |
-| `KEEPERHUB_SET_TEXT_URL`     | preferred | KeeperHub webhook for ENS text records                      |
-| `KEEPERHUB_API_KEY`          | preferred | Bearer token for webhook auth                               |
-| `REALITY_DEFENDER_API_KEY`   | optional  | Enables AI-generation detection in Trust Stack              |
-
-#### `frontend/.env`
-
-| Variable                        | Required | Description                                |
-| ------------------------------- | -------- | ------------------------------------------ |
-| `VITE_API_BASE_URL`             | ✅       | Backend URL (`/api` via Vite proxy in dev) |
-| `VITE_WALLETCONNECT_PROJECT_ID` | ✅       | WalletConnect Cloud project ID             |
-
-See `.env.example` in each directory for the full list including optional fields.
+KeeperHub must be running separately on `localhost:3000` — see SETUP.md.
 
 ---
 
@@ -185,6 +166,7 @@ construct/
 │   └── vite.config.ts
 ├── docs/
 │   ├── ARCHITECTURE.md      # Full system design + decision log
+│   ├── SETUP.md             # End-to-end local setup walkthrough
 │   ├── DEMO.md              # Judge walkthrough script
 │   ├── KEEPERHUB_FEEDBACK.md # Builder Feedback Bounty submission
 │   └── AI_ATTRIBUTION.md    # Per ETHGlobal hackathon rules
@@ -218,13 +200,14 @@ Two threads ran through the entire build.
 
 ## Demo
 
-🎥 _Demo video link — added before submission_
+https://www.youtube.com/watch?v=dzP8ar6gUsU
 
 ---
 
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system design, component deep-dives, decision log
+- [`docs/SETUP.md`](docs/SETUP.md) — end-to-end local setup walkthrough
 - [`docs/DEMO.md`](docs/DEMO.md) — judge walkthrough
 - [`docs/KEEPERHUB_FEEDBACK.md`](docs/KEEPERHUB_FEEDBACK.md) — Builder Feedback Bounty
 - [`docs/AI_ATTRIBUTION.md`](docs/AI_ATTRIBUTION.md) — Claude usage disclosure (ETHGlobal hackathon rule 3.3)
@@ -254,4 +237,4 @@ MIT — see [`LICENSE`](LICENSE).
 
 ---
 
-_Construct is built by [Alexander Burge](https://github.com/<yourname>) (Founder, Paxmata Ltd). Two takeaways from the build: production architecture pays off, and accessibility is non-negotiable._
+_Construct is built by [Alexander Burge](https://github.com/AdlusMjRb) (Founder, Paxmata Ltd). Two takeaways from the build: production architecture pays off, and accessibility is non-negotiable._
