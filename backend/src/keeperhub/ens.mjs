@@ -10,7 +10,7 @@ const NAME_WRAPPER_ABI = [
   "function ownerOf(uint256 id) view returns (address)",
   "function balanceOf(address account, uint256 id) view returns (uint256)",
 ];
-const KH_PRIORITY_FEE_FLOOR_WEI = 1_000n;
+const KH_PRIORITY_FEE_FLOOR_WEI = 1n;
 let _sepoliaProvider = null;
 function getSepoliaProvider() {
   if (_sepoliaProvider) return _sepoliaProvider;

@@ -117,7 +117,7 @@ It covers:
 - Configuring environment variables for both backend and frontend
 - The full set of common gotchas (resolver approval scoping, gas fee strategy, KeeperHub status endpoint quirks, etc.)
 
-Allow ~3–4 hours end-to-end if you're starting from scratch. If you just want to **use** the deployed app rather than reproduce the stack, skip the setup and see the demo link below.
+Allow ~3–4 hours end-to-end if you're starting from scratch. If you just want to **see** the deployed app in action rather than reproduce the stack, skip the setup and see the demo link below.
 
 ### Quick start (if you already have all the prerequisites)
 
