@@ -66,8 +66,6 @@ The autonomous agent keeps signing across the chain split. KeeperHub's MPC walle
 
 Every layer decentralised or independently verifiable. One coherent pipeline.
 
-![Construct Architecture](frontend/src/assets/construct-architecture.svg)
-
 | Surface      | Component                          | Decentralisation property                                    |
 | ------------ | ---------------------------------- | ------------------------------------------------------------ |
 | Identity     | ENS subname (Sepolia, NameWrapper) | NFT ownership transferable; text records portable            |

@@ -521,12 +521,4 @@ Then close the tab entirely and reopen.
 
 ---
 
-## What if I just want to use the live deployment?
-
-Skip everything above. Connect a wallet with Sepolia ETH and 0G to the live Construct app, walk through the flow. The hosted backend points at the same KeeperHub instance + Turnkey wallet. You don't need to run anything yourself.
-
-The setup guide is for people **forking the project to extend it** or **independently reproducing the architecture**.
-
----
-
 _Setup feedback welcome — issues + PRs to https://github.com/AdlusMjRb/Construct._
