@@ -2,8 +2,6 @@
 
 This is the practical "how do I get this running locally" guide for Construct. Covers everything from prerequisites to a fully working local stack: backend, frontend, KeeperHub instance, Turnkey MPC wallet, ENS parent name registered, three workflows configured.
 
-If you just want to run the app against the existing live deployment, skip to the [README](../README.md). This doc is for **developers cloning to extend or reproduce** the build.
-
 ---
 
 ## Contents
