@@ -15,6 +15,22 @@ A funder writes a project description in any language. An agent breaks it into m
 
 ---
 
+## Prize-track submissions
+
+**0G Autonomous Agents.** Construct runs the full AI-to-payment pipeline on 0G. Milestones stored on 0G Storage, escrow contracts on 0G Chain, verification triggering release transactions on 0G. The only network in the settlement layer.
+
+**KeeperHub.** An autonomous AI agent executing on-chain payments without anyone holding a custody key. The MPC wallet signs across two chains from a single identity. Self-hosted to add 0G Galileo (the hosted app didn't support at time of build); detailed feedback to the KeeperHub team in [`docs/KEEPERHUB_FEEDBACK.md`](docs/KEEPERHUB_FEEDBACK.md).
+
+**ENS.** Each project is a wrapped ENS subname under `construct.eth`. Text records on the resolver bridge Sepolia identity to 0G escrow state. Transferring the NFT transfers the project, and the same NFT can be repointed at a new escrow when continuity is needed. ENS as a project's spine, not a vanity address.
+
+---
+
+## LIVE DEMO
+
+https://construct.paxmata.co.uk/
+
+---
+
 ## The pipeline
 
 Five phases. Every layer is on-chain, decentralised, or independently verifiable.
@@ -176,16 +192,6 @@ construct/
 
 ---
 
-## Prize-track submissions
-
-**0G Autonomous Agents.** Construct runs the full AI-to-payment pipeline on 0G. Milestones stored on 0G Storage, escrow contracts on 0G Chain, verification triggering release transactions on 0G. The only network in the settlement layer.
-
-**KeeperHub.** An autonomous AI agent executing on-chain payments without anyone holding a custody key. The MPC wallet signs across two chains from a single identity. Self-hosted to add 0G Galileo (the hosted app didn't support at time of build); detailed feedback to the KeeperHub team in [`docs/KEEPERHUB_FEEDBACK.md`](docs/KEEPERHUB_FEEDBACK.md).
-
-**ENS.** Each project is a wrapped ENS subname under `construct.eth`. Text records on the resolver bridge Sepolia identity to 0G escrow state. Transferring the NFT transfers the project, and the same NFT can be repointed at a new escrow when continuity is needed. ENS as a project's spine, not a vanity address.
-
----
-
 ## Two principles
 
 Two threads ran through the entire build.
@@ -193,12 +199,6 @@ Two threads ran through the entire build.
 **1. Production architecture over hackathon shortcuts.** Every workaround that compromises the real product's integrity is a lost opportunity to demonstrate production thinking. _"Every time you say we don't need to think like this for the hackathon is each time we lose."_ No hidden fees, no custody for the agent, no shortcuts on the trust model. The agent fee is shown as a separate line item on the deploy screen because Paxmata exists _because_ construction payments are opaque, and hiding our own fees would contradict the thesis.
 
 **2. Accessibility by design.** Six languages because development finance happens in places that don't speak English. The cross-chain split is invisible to the funder, they see one project, even though it runs across 0G and Sepolia. Wallet connect, error messages, and the spec view all defer to whatever language the user wrote in. The agent reads the language they speak, not the other way round.
-
----
-
-## Demo
-
-https://www.youtube.com/watch?v=dzP8ar6gUsU
 
 ---
 
